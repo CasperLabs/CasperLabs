@@ -34,7 +34,7 @@ class BlocksResponseAPITest extends FlatSpec with Matchers with BlockGenerator w
 
   "showBlocks" should "return all blocks" in withCombinedStorage() { implicit storage =>
     for {
-      genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+      genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
       b2 <- createAndStoreMessage[Task](
              Seq(genesis.blockHash),
              v2,
@@ -119,7 +119,7 @@ class BlocksResponseAPITest extends FlatSpec with Matchers with BlockGenerator w
       *
       */
     for {
-      genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+      genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
       b2 <- createAndStoreMessage[Task](
              Seq(genesis.blockHash),
              v2,

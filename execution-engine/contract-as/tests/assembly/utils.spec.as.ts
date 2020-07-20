@@ -5,13 +5,15 @@ import { Pair } from "../../assembly/pair";
 
 export function testHex2Bin(): bool {
     let truth = hex2bin("deadbeef");
-    return checkArraysEqual(typedToArray(truth), [222, 173, 190, 239]);
+    let lhs = typedToArray(truth);
+    let rhs: Array<u8> = [222, 173, 190, 239];
+    return checkArraysEqual(lhs, rhs);
 }
 
 export function testcheckArraysEqual(): bool {
-    assert(checkArraysEqual(<u8[]>[], []));
-    assert(!checkArraysEqual(<u8[]>[1, 2, 3], [1]));
-    return checkArraysEqual(<u8[]>[1, 2, 3], [1, 2, 3]);
+    assert(checkArraysEqual(<u8[]>[], <u8[]>[]));
+    assert(!checkArraysEqual(<u8[]>[1, 2, 3], <u8[]>[1]));
+    return checkArraysEqual(<u8[]>[1, 2, 3], <u8[]>[1, 2, 3]);
 }
 
 export function testItemsEqual(): bool {

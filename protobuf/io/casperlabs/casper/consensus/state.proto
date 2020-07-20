@@ -1,6 +1,77 @@
 syntax = "proto3";
 package io.casperlabs.casper.consensus.state;
 
+message SemVer {
+    uint32 major = 1;
+    uint32 minor = 2;
+    uint32 patch = 3;
+}
+
+message Contract {
+    message EntryPoint {
+
+        message Arg {
+            string name = 1;
+            CLType cl_type = 2;
+        }
+        message Public {} // Tag
+        message Group {
+            string name = 1;
+        }
+
+        message SessionType {}
+        message ContractType {}
+
+        message Groups {
+            repeated Group groups = 1;
+        }
+
+        string name = 1;
+
+        repeated Arg args = 2;
+        CLType ret = 3;
+        oneof access {
+            Public public = 4;
+            Groups groups = 5;
+        }
+
+
+        oneof entry_point_type {
+            SessionType session = 6;
+            ContractType contract = 7;
+        }
+    }
+
+    bytes contract_package_hash = 1;
+    bytes contract_wasm_hash = 2;
+    repeated NamedKey named_keys = 3;
+    repeated EntryPoint entry_points = 4;
+    ProtocolVersion protocol_version = 6;
+
+}
+
+message ContractVersionKey {
+    uint32 protocol_version_major = 1;
+    uint32 contract_version = 2;
+}
+
+message ContractPackage {
+    
+    message Version {
+        ContractVersionKey version = 1;
+        bytes contract_hash = 2;
+    }
+    message Group {
+        Contract.EntryPoint.Group group = 1;
+        repeated Key.URef urefs = 2;
+    }
+    Key.URef access_key = 1;
+    repeated Version active_versions = 2;
+    repeated ContractVersionKey disabled_versions = 3;
+    repeated Group groups = 4;
+}
+
+
 // Fundamental type of a user-facing value stored under a key in global state.
 message CLType {
     enum Simple {
@@ -164,6 +235,11 @@ message CLValueInstance {
         Value value_2 = 2;
         Value value_3 = 3;
     }
+
+}
+
+message ContractWasm {
+    bytes wasm = 1;
 }
 
 // Value stored under a key in global state.
@@ -172,6 +248,8 @@ message StoredValue {
         CLValue cl_value = 1;
         Account account = 2;
         Contract contract = 3;
+        ContractPackage contract_package = 4;
+        ContractWasm contract_wasm = 5;
     }
 }
 
@@ -180,6 +258,8 @@ message StoredValueInstance {
         CLValueInstance cl_value = 1;
         Account account = 2;
         Contract contract = 3;
+        ContractPackage contract_package = 4;
+        ContractWasm contract_wasm = 5;
     }
 }
 
@@ -219,7 +299,6 @@ message Key {
 		Address address = 1;
 		Hash hash = 2;
 		URef uref = 3;
-		Local local = 4;
 	}
 
 	message Address {
@@ -247,21 +326,11 @@ message Key {
 			READ_ADD_WRITE = 7;
 		}
 	}
-
-	message Local {
-		bytes hash = 1;
-	}
 }
 
 message NamedKey {
 	string name = 1;
 	Key key = 2;
-}
-
-message Contract {
-	bytes body = 1;
-	repeated NamedKey named_keys = 2;
-    ProtocolVersion protocol_version = 3;
 }
 
 message Account {

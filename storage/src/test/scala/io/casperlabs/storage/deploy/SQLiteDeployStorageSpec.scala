@@ -3,7 +3,7 @@ package io.casperlabs.storage.deploy
 import cats.implicits._
 import com.google.protobuf.ByteString
 import io.casperlabs.casper.consensus.info.DeployInfo
-import io.casperlabs.crypto.Keys.PublicKey
+import io.casperlabs.crypto.Keys.PublicKeyHash
 import io.casperlabs.shared.Sorting.byteStringOrdering
 import io.casperlabs.storage.{SQLiteFixture, SQLiteStorage}
 import monix.eval.Task
@@ -52,7 +52,7 @@ class SQLiteDeployStorageSpec
           deployView = DeployInfo.View.BASIC,
           test = { (reader: DeployStorageReader[Task], writer: DeployStorageWriter[Task]) =>
             val accountDeploysWithoutBody = deploys
-              .filter(_.getHeader.accountPublicKey == accountKey.publicKey)
+              .filter(_.getHeader.accountPublicKeyHash == accountKey.publicKeyHash)
               .sortBy(d => (d.getHeader.timestamp, d.deployHash))
               .reverse
               .map(_.clearBody)
@@ -60,7 +60,7 @@ class SQLiteDeployStorageSpec
             for {
               _ <- writer.addAsPending(deploys)
               all <- reader.getDeploysByAccount(
-                      PublicKey(accountKey.publicKey),
+                      PublicKeyHash(accountKey.publicKeyHash),
                       limit = Int.MaxValue,
                       lastTimeStamp = Long.MaxValue,
                       lastDeployHash = ByteString.EMPTY,
@@ -75,11 +75,11 @@ class SQLiteDeployStorageSpec
     "getDeploysByAccount" should {
       "return the correct paginated list of deploys for the specified account" in forAll(
         for {
-          deploys          <- deploysGen()
-          accountKey       <- Gen.oneOf(randomAccounts)
-          accountPublicKey = accountKey.publicKey
+          deploys              <- deploysGen()
+          accountKey           <- Gen.oneOf(randomAccounts)
+          accountPublicKeyHash = accountKey.publicKeyHash
           deploysByAccount = deploys
-            .filter(_.getHeader.accountPublicKey == accountPublicKey)
+            .filter(_.getHeader.accountPublicKeyHash == accountPublicKeyHash)
             .sortBy(d => (d.getHeader.timestamp, d.deployHash))
             .reverse
           offset = if (deploysByAccount.isEmpty) {
@@ -89,9 +89,9 @@ class SQLiteDeployStorageSpec
           }
           limit  <- Gen.choose(0, 100)
           isNext <- arbitrary[Boolean]
-        } yield (deploys, accountPublicKey, deploysByAccount, offset, limit, isNext)
+        } yield (deploys, accountPublicKeyHash, deploysByAccount, offset, limit, isNext)
       ) {
-        case (deploys, accountPubKey, deploysByAccount, offset, limit, isNext) =>
+        case (deploys, accountPublicKeyHash, deploysByAccount, offset, limit, isNext) =>
           testFixture { (reader, writer) =>
             val (lastTimeStamp, lastDeployHash) =
               deploysByAccount
@@ -109,7 +109,7 @@ class SQLiteDeployStorageSpec
             for {
               _ <- writer.addAsPending(deploys)
               all <- reader.getDeploysByAccount(
-                      PublicKey(accountPubKey),
+                      PublicKeyHash(accountPublicKeyHash),
                       limit,
                       lastTimeStamp,
                       lastDeployHash,

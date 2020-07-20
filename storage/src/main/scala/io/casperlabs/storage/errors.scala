@@ -29,7 +29,7 @@ object StorageError {
         s"Topological sorting of length $length was requested while maximal length is ${Int.MaxValue}"
       case BlockValidatorIsMalformed(block) =>
         s"Block ${Base16.encode(block.blockHash.toByteArray)} validator is malformed: ${Base16
-          .encode(block.getHeader.validatorPublicKey.toByteArray)}"
+          .encode(block.getHeader.validatorPublicKeyHash.toByteArray)}"
       case CheckpointDoesNotExist(offset) =>
         s"Requested a block with block number $offset, but there is no checkpoint for it"
       case LatestMessagesLogIsMalformed =>

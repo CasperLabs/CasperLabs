@@ -11,8 +11,8 @@
   "devDependencies": {
     "@types/node": "^12.6.2",
     "concurrently": "^4.1.1",
-    "nyc": "^15.0.1",
     "minimist": "^1.2.5",
+    "nyc": "^15.0.1",
     "ts-node": "^8.4.1",
     "ts-protoc-gen": "^0.10.0",
     "typescript": "^3.7.0"

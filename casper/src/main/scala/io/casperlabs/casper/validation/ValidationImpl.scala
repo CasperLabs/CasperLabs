@@ -249,17 +249,22 @@ abstract class ValidationImpl[F[_]: Sync: FunctorRaise[*[_], InvalidBlock]: Log:
       block: Block,
       invalidBlockTracker: Set[BlockHash]
   ): F[Unit] = {
-    val invalidJustifications = block.justifications.filter(
-      justification => invalidBlockTracker.contains(justification.latestBlockHash)
-    )
+    val invalidJustifications = block.justifications.toList
+      .filter { justification =>
+        invalidBlockTracker.contains(justification.latestBlockHash)
+      }
+
     val neglectedInvalidJustification = invalidJustifications.exists { justification =>
       val slashedValidatorBond =
-        bonds(block).find(_.validatorPublicKey == justification.validatorPublicKey)
+        bonds(block).find(
+          _.validatorPublicKeyHash == justification.validatorPublicKeyHash
+        )
       slashedValidatorBond match {
         case Some(bond) => Weight(bond.stake) > 0
         case None       => false
       }
     }
+
     if (neglectedInvalidJustification) {
       reject[F](block, NeglectedInvalidBlock, "Neglected invalid justification.")
     } else {
@@ -283,7 +288,8 @@ abstract class ValidationImpl[F[_]: Sync: FunctorRaise[*[_], InvalidBlock]: Log:
               summary,
               CasperLabsProtocol[F].versionAt(_)
             ),
-            if (!treatAsGenesis) Validation.blockSignature[F](summary) else true.pure[F]
+            if (!treatAsGenesis) Validation.blockSignature[F](summary) else true.pure[F],
+            if (!treatAsGenesis) Validation.validatorPublicKeyHash[F](summary) else true.pure[F]
           )
       _ <- Validation.summaryHash[F](summary)
       _ <- Validation.chainIdentifier[F](summary, chainName)

@@ -3,49 +3,54 @@
 
 extern crate alloc;
 
-use alloc::format;
+use alloc::{string::ToString, vec};
 
-use contract::{
-    contract_api::{account, runtime, storage, system},
-    unwrap_or_revert::UnwrapOrRevert,
+use alloc::boxed::Box;
+use contract::contract_api::{runtime, storage};
+
+use types::{
+    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
+    CLType,
 };
-use types::{account::PublicKey, ApiError, Key, URef, U512};
 
-const TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME: &str = "transfer_purse_to_account";
-const TRANSFER_FUNCTION_NAME: &str = "transfer";
-const TRANSFER_RESULT_UREF_NAME: &str = "transfer_result";
-const MAIN_PURSE_FINAL_BALANCE_UREF_NAME: &str = "final_balance";
+const ENTRY_FUNCTION_NAME: &str = "transfer";
+const PACKAGE_HASH_KEY_NAME: &str = "transfer_purse_to_account";
+const HASH_KEY_NAME: &str = "transfer_purse_to_account_hash";
+const ACCESS_KEY_NAME: &str = "transfer_purse_to_account_access";
+const ARG_0_NAME: &str = "target_account_addr";
+const ARG_1_NAME: &str = "amount";
+const CONTRACT_VERSION: &str = "contract_version";
 
 #[no_mangle]
 pub extern "C" fn transfer() {
-    let source: URef = account::get_main_purse();
-    let destination: PublicKey = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let amount: U512 = runtime::get_arg(1)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-
-    let transfer_result = system::transfer_from_purse_to_account(source, destination, amount);
-
-    let final_balance = system::get_balance(source).unwrap_or_revert_with(ApiError::User(103));
-
-    let result = format!("{:?}", transfer_result);
-
-    let result_uref: Key = storage::new_uref(result).into();
-    runtime::put_key(TRANSFER_RESULT_UREF_NAME, result_uref);
-    runtime::put_key(
-        MAIN_PURSE_FINAL_BALANCE_UREF_NAME,
-        storage::new_uref(final_balance).into(),
-    );
+    transfer_purse_to_account::delegate();
 }
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let key = storage::store_function(TRANSFER_FUNCTION_NAME, Default::default())
-        .into_uref()
-        .unwrap_or_revert_with(ApiError::UnexpectedContractRefVariant)
-        .into();
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
 
-    runtime::put_key(TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME, key);
+        let entry_point = EntryPoint::new(
+            ENTRY_FUNCTION_NAME.to_string(),
+            vec![
+                Parameter::new(ARG_0_NAME, CLType::FixedList(Box::new(CLType::U8), 32)),
+                Parameter::new(ARG_1_NAME, CLType::U512),
+            ],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Session,
+        );
+        entry_points.add_entry_point(entry_point);
+        entry_points
+    };
+
+    let (contract_hash, contract_version) = storage::new_contract(
+        entry_points,
+        None,
+        Some(PACKAGE_HASH_KEY_NAME.to_string()),
+        Some(ACCESS_KEY_NAME.to_string()),
+    );
+    runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
+    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
 }

@@ -5,7 +5,13 @@ use contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{system_contract_errors::mint, ApiError, URef, U512};
+use types::{runtime_args, system_contract_errors::mint, ApiError, RuntimeArgs, URef, U512};
+
+const METHOD_MINT: &str = "mint";
+const METHOD_BALANCE: &str = "balance";
+
+const ARG_AMOUNT: &str = "amount";
+const ARG_PURSE: &str = "purse";
 
 #[repr(u16)]
 enum Error {
@@ -14,7 +20,13 @@ enum Error {
 }
 
 fn mint_purse(amount: U512) -> Result<URef, mint::Error> {
-    runtime::call_contract(system::get_mint(), ("mint", amount))
+    runtime::call_contract(
+        system::get_mint(),
+        METHOD_MINT,
+        runtime_args! {
+            ARG_AMOUNT => amount,
+        },
+    )
 }
 
 #[no_mangle]
@@ -24,7 +36,13 @@ pub extern "C" fn call() {
 
     let mint = system::get_mint();
 
-    let balance: Option<U512> = runtime::call_contract(mint, ("balance", new_purse));
+    let balance: Option<U512> = runtime::call_contract(
+        mint,
+        METHOD_BALANCE,
+        runtime_args! {
+            ARG_PURSE => new_purse,
+        },
+    );
 
     match balance {
         None => runtime::revert(ApiError::User(Error::BalanceNotFound as u16)),

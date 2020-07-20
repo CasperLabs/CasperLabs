@@ -5,36 +5,33 @@ use std::{
 
 use parity_wasm::elements::Module;
 
-use types::URef;
+use types::ContractHash;
 
 /// A cache of deserialized contracts.
 #[derive(Clone, Default, Debug)]
-pub struct SystemContractCache(Arc<RwLock<HashMap<URef, Module>>>);
+pub struct SystemContractCache(Arc<RwLock<HashMap<ContractHash, Module>>>);
 
 impl SystemContractCache {
-    /// Returns `true` if the cache has a contract corresponding to `uref`.
-    pub fn has(&self, uref: &URef) -> bool {
+    /// Returns `true` if the cache has a contract corresponding to `contract_hash`.
+    pub fn has(&self, contract_hash: ContractHash) -> bool {
         let guarded_map = self.0.read().unwrap();
-        let uref = uref.remove_access_rights();
-        guarded_map.contains_key(&uref)
+        guarded_map.contains_key(&contract_hash)
     }
 
-    /// Inserts `contract` into the cache under `uref`.
+    /// Inserts `contract` into the cache under `contract_hash`.
     ///
     /// If the cache did not have this key present, `None` is returned.
     ///
     /// If the cache did have this key present, the value is updated, and the old value is returned.
-    pub fn insert(&self, uref: URef, module: Module) -> Option<Module> {
+    pub fn insert(&self, contract_hash: ContractHash, module: Module) -> Option<Module> {
         let mut guarded_map = self.0.write().unwrap();
-        let uref = uref.remove_access_rights();
-        guarded_map.insert(uref, module)
+        guarded_map.insert(contract_hash, module)
     }
 
-    /// Returns a clone of the contract corresponding to `uref`.
-    pub fn get(&self, uref: &URef) -> Option<Module> {
+    /// Returns a clone of the contract corresponding to `contract_hash`.
+    pub fn get(&self, contract_hash: ContractHash) -> Option<Module> {
         let guarded_map = self.0.read().unwrap();
-        let uref = uref.remove_access_rights();
-        guarded_map.get(&uref).cloned()
+        guarded_map.get(&contract_hash).cloned()
     }
 }
 
@@ -49,7 +46,7 @@ mod tests {
         engine_state::system_contract_cache::SystemContractCache,
         execution::{AddressGenerator, AddressGeneratorBuilder},
     };
-    use types::{AccessRights, URef};
+    use types::ContractHash;
 
     lazy_static! {
         static ref ADDRESS_GENERATOR: Mutex<AddressGenerator> = Mutex::new(
@@ -63,8 +60,7 @@ mod tests {
     pub fn should_insert_module() {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let module = Module::default();
 
@@ -80,11 +76,10 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
 
-        assert!(!cache.has(&reference))
+        assert!(!cache.has(reference))
     }
 
     #[test]
@@ -92,14 +87,13 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let module = Module::default();
 
         cache.insert(reference, module);
 
-        assert!(cache.has(&reference))
+        assert!(cache.has(reference))
     }
 
     #[test]
@@ -107,14 +101,13 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let module = Module::default();
 
         cache.insert(reference, module);
 
-        assert!(cache.has(&reference.with_access_rights(AccessRights::ADD_WRITE)))
+        assert!(cache.has(reference))
     }
 
     #[test]
@@ -122,29 +115,24 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let module = Module::default();
 
-        cache.insert(
-            reference.with_access_rights(AccessRights::ADD_WRITE),
-            module,
-        );
+        cache.insert(reference, module);
 
-        assert!(cache.has(&reference))
+        assert!(cache.has(reference))
     }
 
     #[test]
     pub fn should_get_none() {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let cache = SystemContractCache::default();
 
-        let result = cache.get(&reference);
+        let result = cache.get(reference);
 
         assert!(result.is_none())
     }
@@ -154,14 +142,13 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let module = Module::default();
 
         cache.insert(reference, module.clone());
 
-        let result = cache.get(&reference);
+        let result = cache.get(reference);
 
         assert_eq!(result, Some(module))
     }
@@ -171,18 +158,17 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let module = Module::default();
 
         cache.insert(reference, module.clone());
 
-        let result = cache.get(&reference.remove_access_rights());
+        let result = cache.get(reference);
 
         assert_eq!(result, Some(module.clone()));
 
-        let result = cache.get(&reference.with_access_rights(AccessRights::ADD_WRITE));
+        let result = cache.get(reference);
 
         assert_eq!(result, Some(module))
     }
@@ -190,23 +176,19 @@ mod tests {
     #[test]
     pub fn should_get_module_normalized_insert() {
         let cache = SystemContractCache::default();
-        let reference = {
+        let reference: ContractHash = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let module = Module::default();
 
-        cache.insert(
-            reference.with_access_rights(AccessRights::ADD_WRITE),
-            module.clone(),
-        );
+        cache.insert(reference, module.clone());
 
-        let result = cache.get(&reference);
+        let result = cache.get(reference);
 
         assert_eq!(result, Some(module.clone()));
 
-        let result = cache.get(&reference.remove_access_rights());
+        let result = cache.get(reference);
 
         assert_eq!(result, Some(module))
     }
@@ -216,8 +198,7 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let initial_module = Module::default();
         let updated_module = {
@@ -236,7 +217,7 @@ mod tests {
 
         assert_eq!(result, Some(initial_module));
 
-        let result = cache.get(&reference);
+        let result = cache.get(reference);
 
         assert_eq!(result, Some(updated_module))
     }
@@ -246,8 +227,7 @@ mod tests {
         let cache = SystemContractCache::default();
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
-            let address = address_generator.create_address();
-            URef::new(address, AccessRights::READ_ADD_WRITE)
+            address_generator.create_address()
         };
         let initial_module = Module::default();
         let updated_module = {
@@ -262,14 +242,11 @@ mod tests {
 
         assert!(result.is_none());
 
-        let result = cache.insert(
-            reference.with_access_rights(AccessRights::ADD_WRITE),
-            updated_module.clone(),
-        );
+        let result = cache.insert(reference, updated_module.clone());
 
         assert_eq!(result, Some(initial_module));
 
-        let result = cache.get(&reference);
+        let result = cache.get(reference);
 
         assert_eq!(result, Some(updated_module))
     }

@@ -20,7 +20,6 @@ THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
 # Directory with Scala client's bundled contracts
 
-CONTRACTS_DIR = f"{THIS_DIRECTORY}/../../../client/src/main/resources"
 PROTOBUF_DIR = f"{THIS_DIRECTORY}/../../../protobuf"
 PROTO_DIR = f"{THIS_DIRECTORY}/casperlabs_client/proto"
 PACKAGE_DIR = f"{THIS_DIRECTORY}/casperlabs_client"
@@ -158,34 +157,9 @@ def run_codegen():
         [(r"(import .*_pb2)", r"from . \1")],
         [fn for fn in glob(f"{PACKAGE_DIR}/*_grpc[.]py") if "_pb2_" not in fn],
     )
-    pattern = (
-        os.environ.get("TAG_NAME")
-        and "/root/bundled_contracts/*.wasm"
-        or os.path.join(CONTRACTS_DIR, "*.wasm")
-    )
-    bundled_contracts = list(glob(pattern))
-    if len(bundled_contracts) == 0:
-        raise Exception(
-            f"Could not find wasm files that should be bundled with the client. {pattern}"
-        )
-    for filename in bundled_contracts:
-        shutil.copy(filename, PACKAGE_DIR)
 
 
 def prepare_sdist():
-    contracts_dir = (
-        os.environ.get("TAG_NAME") and "/root/bundled_contracts" or CONTRACTS_DIR
-    )
-    bundled_contracts = [
-        f"{contracts_dir}/{f}"
-        for f in ["bonding.wasm", "transfer_to_account_u512.wasm", "unbonding.wasm"]
-    ]
-    for file_name in bundled_contracts:
-        if not os.path.exists(file_name):
-            raise Exception(f"Contract file {file_name} does not exit")
-        base_name = os.path.basename(file_name)
-        copyfile(file_name, os.path.join(PACKAGE_DIR, base_name))
-        print(f"Copied contract {base_name}")
     run_codegen()
 
 
@@ -231,7 +205,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     include_package_data=True,
-    package_data={NAME: [f"{THIS_DIRECTORY}/casperlabs_client/*.wasm"]},
+    package_data={},
     keywords="casperlabs blockchain ethereum smart-contracts",
     author="CasperLabs LLC",
     author_email="testing@casperlabs.io",

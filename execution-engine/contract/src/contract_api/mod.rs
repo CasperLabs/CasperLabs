@@ -20,7 +20,8 @@ const fn size_align_for_array<T>(n: usize) -> (usize, usize) {
     (n * mem::size_of::<T>(), mem::align_of::<T>())
 }
 
-fn alloc_bytes(n: usize) -> NonNull<u8> {
+/// Allocates bytes
+pub fn alloc_bytes(n: usize) -> NonNull<u8> {
     let (size, align) = size_align_for_array::<u8>(n);
     // We treat allocated memory as raw bytes, that will be later passed to deserializer which also
     // operates on raw bytes.

@@ -3,7 +3,7 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use types::Key;
+use types::{contracts::NamedKeys, Key};
 
 use crate::engine_server::{mappings::ParsingError, state::NamedKey};
 
@@ -27,16 +27,16 @@ impl TryFrom<NamedKey> for (String, Key) {
 }
 
 /// Thin wrapper to allow us to implement `From` and `TryFrom` helpers to convert to and from
-/// `BTreeMap<String, Key>` and `Vec<NamedKey>`.
+/// `NamedKeys` and `Vec<NamedKey>`.
 #[derive(Clone, PartialEq, Debug)]
-pub(crate) struct NamedKeyMap(BTreeMap<String, Key>);
+pub(crate) struct NamedKeyMap(NamedKeys);
 
 impl NamedKeyMap {
-    pub fn new(inner: BTreeMap<String, Key>) -> Self {
+    pub fn new(inner: NamedKeys) -> Self {
         Self(inner)
     }
 
-    pub fn into_inner(self) -> BTreeMap<String, Key> {
+    pub fn into_inner(self) -> NamedKeys {
         self.0
     }
 }

@@ -11,7 +11,8 @@ import eu.timepit.refined.api.Refined
 import eu.timepit.refined.numeric._
 import io.casperlabs.casper.consensus.state
 import io.casperlabs.configuration.SubConfig
-import io.casperlabs.crypto.Keys.PublicKey
+import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyHash}
+import io.casperlabs.crypto.signatures.SignatureAlgorithm
 import io.casperlabs.crypto.codec.StringSyntax
 import io.casperlabs.ipc
 import java.io.{ByteArrayOutputStream, File}
@@ -142,7 +143,7 @@ object ChainSpec extends ParserImplicits {
   ) extends SubConfig
 
   final case class Account(
-      publicKey: PublicKey,
+      publicKeyHash: PublicKeyHash,
       initialBalance: BigInt,
       initialBondedAmount: BigInt
   )
@@ -155,15 +156,18 @@ object ChainSpec extends ParserImplicits {
         .filterNot(_.isEmpty)
         .map { line =>
           line.split(',') match {
-            case Array(publicKeyStr, balanceStr, bondedAmountStr) =>
+            case Array(publicKeyStr, sigAlgorithmStr, balanceStr, bondedAmountStr) =>
               for {
                 publicKey    <- parsePublicKey(publicKeyStr)
+                sigAlgorithm <- parseSigAlgorithm(sigAlgorithmStr)
+                accountHash  = sigAlgorithm.publicKeyHash(publicKey)
                 balance      <- parseBigInt(balanceStr)
                 bondedAmount <- parseBigInt(bondedAmountStr)
-              } yield Account(publicKey, balance, bondedAmount)
+              } yield Account(accountHash, balance, bondedAmount)
 
             case _ =>
-              s"Could not parse line into an Account: $line".asLeft[Account]
+              s"Could not parse line into an Account: $line; expected <pk>,<algo>,<balance>,<bond>"
+                .asLeft[Account]
           }
         }
         .toList
@@ -184,6 +188,12 @@ object ChainSpec extends ParserImplicits {
         _ => s"Could not parse amount: $amount".asLeft[BigInt],
         i => i.asRight[String]
       )
+
+    private def parseSigAlgorithm(sigAlgorithmStr: String) =
+      sigAlgorithmStr match {
+        case SignatureAlgorithm(alg) => alg.asRight[String]
+        case unknown                 => s"Unknown signature algorithm: $unknown".asLeft[SignatureAlgorithm]
+      }
   }
 }
 
@@ -331,7 +341,7 @@ object ChainSpecReader {
                   .withAccounts(accounts.map { account =>
                     ipc.ChainSpec.GenesisConfig.ExecConfig
                       .GenesisAccount()
-                      .withPublicKey(ByteString.copyFrom(account.publicKey))
+                      .withPublicKeyHash(ByteString.copyFrom(account.publicKeyHash))
                       .withBalance(state.BigInt(account.initialBalance.toString, bitWidth = 512))
                       .withBondedAmount(
                         state.BigInt(account.initialBondedAmount.toString, bitWidth = 512)

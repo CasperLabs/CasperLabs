@@ -12,6 +12,8 @@ import io.casperlabs.comm.discovery.NodeUtils._
 import io.casperlabs.comm.discovery.{Node, NodeDiscovery}
 import io.casperlabs.comm.gossiping.Utils._
 import io.casperlabs.comm.gossiping.downloadmanager.BlockDownloadManager
+import io.casperlabs.crypto.Keys
+import io.casperlabs.crypto.Keys.PublicKey
 import io.casperlabs.shared.Log
 import io.casperlabs.shared.ByteStringPrettyPrinter.byteStringShow
 import io.casperlabs.catscontrib.effect.implicits.fiberSyntax
@@ -330,8 +332,8 @@ class GenesisApproverImpl[F[_]: Concurrent: Log: Timer](
 
       case Some(Status(_, block))
           if !block.getHeader.getState.bonds
-            .map(_.validatorPublicKey)
-            .contains(approval.approverPublicKey) =>
+            .map(_.validatorPublicKeyHash)
+            .contains(approverAccountHash(approval)) =>
         Left(InvalidArgument("The signatory is not one of the bonded validators."))
 
       case _
@@ -364,6 +366,13 @@ class GenesisApproverImpl[F[_]: Concurrent: Log: Timer](
             status -> none.asRight[ServiceError]
         }
     }
+
+  private def approverAccountHash(a: Approval): ByteString = {
+    val alg  = a.getSignature.sigAlgorithm
+    val key  = PublicKey(a.approverPublicKey.toByteArray)
+    val hash = Keys.publicKeyHash(alg)(key)
+    ByteString.copyFrom(hash)
+  }
 
   private def relayApproval(blockHash: ByteString, approval: Approval): F[Unit] = {
     val candidate = blockHash.show

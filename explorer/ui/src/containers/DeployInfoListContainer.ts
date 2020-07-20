@@ -12,7 +12,7 @@ export class DeployInfoListContainer {
   @observable pageToken: string | null = null;
   @observable nextPageToken: string | null = null;
   @observable prevPageToken: string | null = null;
-  @observable accountPublicKey: ByteArray | null = null;
+  @observable accountPublicKeyHash: ByteArray | null = null;
   pageSize: number = 5;
 
   constructor(
@@ -22,8 +22,8 @@ export class DeployInfoListContainer {
 
   /** Call whenever the page switches to a new account. */
   @action
-  init(accountPublicKey: ByteArray, pageToken: string | null) {
-    this.accountPublicKey = accountPublicKey;
+  init(accountPublicKeyHash: ByteArray, pageToken: string | null) {
+    this.accountPublicKeyHash = accountPublicKeyHash;
     this.pageToken = pageToken;
     this.deployInfosList = null;
   }
@@ -36,12 +36,12 @@ export class DeployInfoListContainer {
 
   @action
   async fetchData() {
-    if (this.accountPublicKey === null) return;
+    if (this.accountPublicKeyHash === null) return;
     if (this.pageToken === '') return; // no more data
     await this.errors.capture(
       this.casperService
         .getDeployInfos(
-          this.accountPublicKey,
+          this.accountPublicKeyHash,
           this.pageSize,
           BlockInfo.View.BASIC,
           this.pageToken || ''

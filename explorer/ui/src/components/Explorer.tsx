@@ -8,7 +8,6 @@ import {
 import { BlockDAG } from './BlockDAG';
 import DataTable from './DataTable';
 import { BlockInfo } from 'casperlabs-grpc/io/casperlabs/casper/consensus/info_pb';
-import $ from 'jquery';
 import { DagStepButtons, Props } from './BlockList';
 import { Link, withRouter } from 'react-router-dom';
 import Pages from './Pages';
@@ -17,31 +16,21 @@ import { BondedValidatorsTable } from './BondedValidatorsTable';
 import { ToggleButton } from './ToggleButton';
 import { BlockType, BlockRole, FinalityIcon } from './BlockDetails';
 
-const DEFAULT_DEPTH = 100;
 
 /** Show the tips of the DAG. */
 @observer
 class _Explorer extends React.Component<Props, {}> {
   constructor(props: Props) {
     super(props);
-    this.refreshWithDepthAndMaxRank(props.maxRank, props.depth);
+    this.props.dag.refreshWithDepthAndMaxRank(props.maxRank, props.depth);
   }
 
-  refreshWithDepthAndMaxRank(
-    maxRankStr: string | null,
-    depthStr: string | null
-  ) {
-    let maxRank = parseInt(maxRankStr || '') || 0;
-    let depth = parseInt(depthStr || '') || DEFAULT_DEPTH;
-    this.props.dag.updateMaxRankAndDepth(maxRank, depth);
-    this.props.dag.refreshBlockDagAndSetupSubscriber();
-  }
 
   componentWillReceiveProps(nextProps: Props) {
     if (this.props.depth === nextProps.depth && this.props.maxRank === nextProps.maxRank) {
       return;
     }
-    this.refreshWithDepthAndMaxRank(nextProps.maxRank, nextProps.depth);
+    this.props.dag.refreshWithDepthAndMaxRank(nextProps.maxRank, nextProps.depth);
   }
 
   async refresh() {
@@ -159,7 +148,7 @@ class BlockDetails extends React.Component<
     let header = summary.getHeader()!;
     let id = encodeBase16(summary.getBlockHash_asU8());
     let idB64 = summary.getBlockHash_asB64();
-    let validatorId = encodeBase16(header.getValidatorPublicKey_asU8());
+    let validatorId = encodeBase16(header.getValidatorPublicKeyHash_asU8());
     let attrs: Array<[string, any]> =
       [
         ['Block Hash', <Link to={Pages.block(id)}>{shortHash(id)}</Link>],
@@ -184,7 +173,7 @@ class BlockDetails extends React.Component<
               .getBondsList()
               .find(
                 x =>
-                  encodeBase16(x.getValidatorPublicKey_asU8()) === validatorId
+                  encodeBase16(x.getValidatorPublicKeyHash_asU8()) === validatorId
               );
             // Genesis doesn't have a validator.
             return (

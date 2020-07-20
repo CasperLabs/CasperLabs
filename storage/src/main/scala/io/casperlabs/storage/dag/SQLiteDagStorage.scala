@@ -11,6 +11,7 @@ import io.casperlabs.casper.consensus.info.BlockInfo
 import io.casperlabs.casper.consensus.{Block, BlockSummary}
 import io.casperlabs.catscontrib.MonadThrowable
 import io.casperlabs.crypto.codec.Base16
+import io.casperlabs.crypto.Keys.PublicKeyHash
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.metrics.Metrics.Source
 import io.casperlabs.models.BlockImplicits._
@@ -68,7 +69,7 @@ class SQLiteDagStorage[F[_]: Sync](
             (block_hash, validator, j_rank, main_rank, create_time_millis, """ ++ blockInfoCols() ++ fr""")
             VALUES (
               ${block.blockHash},
-              ${block.validatorPublicKey},
+              ${block.validatorPublicKeyHash},
               $jRank,
               $mainRank,
               ${block.timestamp},
@@ -118,7 +119,7 @@ class SQLiteDagStorage[F[_]: Sync](
 
         val insertQuery =
           sql""" INSERT OR IGNORE INTO validator_latest_messages (key_block_hash, validator, block_hash)
-                 VALUES ($keyBlockHash, ${blockSummary.validatorPublicKey}, ${blockSummary.blockHash})""".stripMargin
+                 VALUES ($keyBlockHash, ${blockSummary.validatorPublicKeyHash}, ${blockSummary.blockHash})""".stripMargin
 
         validatorPreviousMessage
           .fold {
@@ -130,7 +131,7 @@ class SQLiteDagStorage[F[_]: Sync](
             // Insert new one.
             sql"""DELETE FROM validator_latest_messages
                   WHERE key_block_hash = $keyBlockHash
-                  AND validator = ${blockSummary.validatorPublicKey}
+                  AND validator = ${blockSummary.validatorPublicKeyHash}
                   AND block_hash = $lastMessageHash""".update.run >>
               insertQuery.update.run.void
           }
@@ -348,21 +349,21 @@ class SQLiteDagStorage[F[_]: Sync](
       sql"""SELECT validator, block_hash
             FROM validator_latest_messages
             WHERE key_block_hash = $keyBlockHash"""
-        .query[(Validator, BlockHash)]
+        .query[(ByteString, BlockHash)]
         .to[List]
         .transact(readXa)
-        .map(_.groupBy(_._1).mapValues(_.map(_._2).toSet))
+        .map(_.groupBy(x => PublicKeyHash(x._1)).mapValues(_.map(_._2).toSet))
 
     override def latestMessages: F[Map[Validator, Set[Message]]] =
       sql"""SELECT v.validator, m.data
             FROM validator_latest_messages v
             INNER JOIN block_metadata m ON m.block_hash = v.block_hash
             WHERE v.key_block_hash = $keyBlockHash"""
-        .query[(Validator, BlockSummary)]
+        .query[(ByteString, BlockSummary)]
         .to[List]
         .transact(readXa)
         .flatMap(_.traverse { case (v, bs) => toMessageSummaryF(bs).map(v -> _) })
-        .map(_.groupBy(_._1).mapValues(_.map(_._2).toSet))
+        .map(_.groupBy(x => PublicKeyHash(x._1)).mapValues(_.map(_._2).toSet))
   }
 
   abstract class SQLiteGlobalTipRepresentation
@@ -423,11 +424,11 @@ class SQLiteDagStorage[F[_]: Sync](
               HAVING COUNT(block_hash) > 1
             )
           """
-            .query[(Validator, BlockHash, BlockSummary)]
+            .query[(ByteString, BlockHash, BlockSummary)]
             .to[List]
             .transact(readXa)
             .flatMap(_.traverse {
-              case (v, k, b) => toMessageSummaryF(b).map((v, k, _))
+              case (v, k, b) => toMessageSummaryF(b).map((PublicKeyHash(v), k, _))
             })
             .map { ms =>
               ms.groupBy(_._1).mapValues(_.groupBy(_._2).mapValues(_.map(_._3).toSet))

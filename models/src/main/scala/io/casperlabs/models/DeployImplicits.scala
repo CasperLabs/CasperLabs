@@ -5,7 +5,7 @@ import io.casperlabs.casper.consensus
 import io.casperlabs.casper.consensus.{Deploy, DeploySummary}
 import io.casperlabs.crypto.Keys.{PrivateKey, PublicKey}
 import io.casperlabs.crypto.hash.Blake2b256
-import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
+import io.casperlabs.crypto.signatures.SignatureAlgorithm
 import io.casperlabs.shared.Sorting.byteStringOrdering
 
 object DeployImplicits {
@@ -19,13 +19,13 @@ object DeployImplicits {
       d.withHeader(h).withDeployHash(hash(h))
     }
 
-    def sign(privateKey: PrivateKey, publicKey: PublicKey): Deploy = {
-      val sig = Ed25519.sign(d.deployHash.toByteArray, privateKey)
+    def approve(alg: SignatureAlgorithm, privateKey: PrivateKey, publicKey: PublicKey): Deploy = {
+      val sig = alg.sign(d.deployHash.toByteArray, privateKey)
       val approval = consensus
         .Approval()
         .withApproverPublicKey(ByteString.copyFrom(publicKey))
         .withSignature(
-          consensus.Signature().withSigAlgorithm(Ed25519.name).withSig(ByteString.copyFrom(sig))
+          consensus.Signature().withSigAlgorithm(alg.name).withSig(ByteString.copyFrom(sig))
         )
       val approvals = d.approvals.toList :+ approval
       d.withApprovals(approvals.distinct.sortBy(_.approverPublicKey))

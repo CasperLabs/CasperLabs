@@ -6,6 +6,7 @@ import io.casperlabs.casper.consensus.Block.MessageType.{BALLOT, BLOCK, Unrecogn
 import io.casperlabs.casper.consensus.Block.MessageRole
 import io.casperlabs.casper.consensus.{BlockSummary, Bond}
 import io.casperlabs.crypto.codec.Base16
+import io.casperlabs.crypto.Keys, Keys.{PublicKey, PublicKeyBS, PublicKeyHash, PublicKeyHashBS}
 import io.casperlabs.models.BlockImplicits._
 import io.casperlabs.catscontrib.MonadThrowable
 import cats.implicits._
@@ -25,7 +26,7 @@ import shapeless.tag
 sealed trait Message {
   type Id = ByteString
   val messageHash: Id
-  val validatorId: ByteString
+  val validatorId: PublicKeyHashBS
   val timestamp: Long
   val jRank: JRank
   val mainRank: MainRank
@@ -65,7 +66,7 @@ object Message {
 
   case class Block private (
       messageHash: Message#Id,
-      validatorId: ByteString,
+      validatorId: PublicKeyHashBS,
       timestamp: Long,
       roundId: Long,
       eraId: Message#Id,
@@ -88,8 +89,8 @@ object Message {
       if (blockSummary.getHeader.parentHashes.isEmpty) Seq.empty
       else blockSummary.getHeader.parentHashes.tail
 
-    lazy val weightMap: Map[ByteString, Weight] = blockSummary.getHeader.getState.bonds.map {
-      case Bond(validatorPk, stake) => validatorPk -> Weight(stake)
+    lazy val weightMap: Map[PublicKeyHashBS, Weight] = blockSummary.getHeader.getState.bonds.map {
+      case Bond(validatorPk, stake) => PublicKeyHash(validatorPk) -> Weight(stake)
     }.toMap
 
     def isBlock: Boolean = true
@@ -97,7 +98,7 @@ object Message {
 
   case class Ballot private (
       messageHash: Message#Id,
-      validatorId: ByteString,
+      validatorId: PublicKeyHashBS,
       timestamp: Long,
       roundId: Long,
       eraId: Message#Id,
@@ -123,7 +124,7 @@ object Message {
       val roundId            = header.roundId
       val keyBlockHash       = header.keyBlockHash
       val parentBlock        = header.parentHashes.headOption.getOrElse(ByteString.EMPTY)
-      val validatorId        = header.validatorPublicKey
+      val validatorId        = PublicKeyHash(header.validatorPublicKeyHash)
       val justifications     = header.justifications
       val jRank              = asJRank(header.jRank)
       val mainRank           = asMainRank(header.mainRank)

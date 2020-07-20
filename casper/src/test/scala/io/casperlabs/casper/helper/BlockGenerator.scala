@@ -4,7 +4,7 @@ import cats._
 import cats.effect.Sync
 import cats.implicits._
 import com.google.protobuf.ByteString
-import io.casperlabs.casper.{DeployEventEmitter, DeploySelection}
+import io.casperlabs.casper.{DeployEventEmitter, DeploySelection, ValidatorIdentity}
 import io.casperlabs.casper.DeploySelection.DeploySelection
 import io.casperlabs.casper.Estimator.{BlockHash, Validator}
 import io.casperlabs.casper.consensus.Block.ProcessedDeploy
@@ -32,6 +32,7 @@ import monix.eval.Task
 import scala.collection.immutable.HashMap
 import scala.language.higherKinds
 import io.casperlabs.storage.dag.DagStorage
+import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
 
 object BlockGenerator {
   implicit val timeEff = new LogicalTime[Task]()
@@ -63,10 +64,12 @@ object BlockGenerator {
 }
 
 trait BlockGenerator {
+  val EmptyValidator: Validator = Keys.PublicKeyHash(ByteString.EMPTY)
+
   def createMessage[F[_]: MonadThrowable: Time: DagStorage](
       parentsHashList: Seq[BlockHash],
       keyBlockHash: ByteString = ByteString.EMPTY,
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       bonds: Seq[Bond] = Seq.empty[Bond],
       justifications: collection.Map[Validator, BlockHash] = HashMap.empty,
       deploys: Seq[ProcessedDeploy] = Seq.empty[ProcessedDeploy],
@@ -93,7 +96,7 @@ trait BlockGenerator {
   def createMessageNew[F[_]: MonadThrowable: Time: DagStorage](
       parentsHashList: Seq[BlockHash],
       keyBlockHash: BlockHash,
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       bonds: Seq[Bond] = Seq.empty[Bond],
       justifications: collection.Map[Validator, Set[BlockHash]] = HashMap.empty,
       deploys: Seq[ProcessedDeploy] = Seq.empty[ProcessedDeploy],
@@ -168,7 +171,13 @@ trait BlockGenerator {
       header = ProtoUtil
         .blockHeader(
           body,
-          Keys.PublicKey(creator.toByteArray),
+          // Sending fake identity.
+          ValidatorIdentity(
+            Keys.PublicKey(Array.empty[Byte]),
+            Keys.PrivateKey(Array.empty[Byte]),
+            Ed25519,
+            Keys.PublicKeyHash(creator.toByteArray)
+          ),
           parentsHashList,
           serializedJustifications,
           postState,
@@ -189,7 +198,7 @@ trait BlockGenerator {
 
   def createAndStoreMessage[F[_]: MonadThrowable: Time: BlockStorage: DagStorage](
       parentsHashList: Seq[BlockHash],
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       bonds: Seq[Bond] = Seq.empty[Bond],
       justifications: collection.Map[Validator, BlockHash] = HashMap.empty[Validator, BlockHash],
       deploys: Seq[ProcessedDeploy] = Seq.empty[ProcessedDeploy],
@@ -222,7 +231,7 @@ trait BlockGenerator {
   def createAndStoreMessageNew[F[_]: MonadThrowable: Time: BlockStorage: DagStorage](
       parentsHashList: Seq[BlockHash],
       keyBlockHash: ByteString,
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       bonds: Seq[Bond] = Seq.empty[Bond],
       justifications: collection.Map[Validator, Set[BlockHash]],
       deploys: Seq[ProcessedDeploy] = Seq.empty[ProcessedDeploy],
@@ -269,7 +278,9 @@ trait BlockGenerator {
       parentsHashList = parents.map(_.blockHash),
       creator = creator,
       bonds = bonds,
-      justifications = justifications.map(b => b.getHeader.validatorPublicKey -> b.blockHash).toMap,
+      justifications = justifications
+        .map(b => Keys.PublicKeyHash(b.getHeader.validatorPublicKeyHash) -> b.blockHash)
+        .toMap,
       deploys = deploys,
       postStateHash = postStateHash,
       chainName = chainName,

@@ -2,17 +2,17 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use types::{
     account::{
-        AddKeyFailure, PublicKey, RemoveKeyFailure, UpdateKeyFailure, Weight, MAX_ASSOCIATED_KEYS,
+        AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight, MAX_ASSOCIATED_KEYS,
     },
     bytesrepr::{Error, FromBytes, ToBytes},
 };
 
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug)]
-pub struct AssociatedKeys(BTreeMap<PublicKey, Weight>);
+pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
 
 impl AssociatedKeys {
-    pub fn new(key: PublicKey, weight: Weight) -> AssociatedKeys {
-        let mut bt: BTreeMap<PublicKey, Weight> = BTreeMap::new();
+    pub fn new(key: AccountHash, weight: Weight) -> AssociatedKeys {
+        let mut bt: BTreeMap<AccountHash, Weight> = BTreeMap::new();
         bt.insert(key, weight);
         AssociatedKeys(bt)
     }
@@ -20,7 +20,7 @@ impl AssociatedKeys {
     /// Adds new AssociatedKey to the set.
     /// Returns true if added successfully, false otherwise.
     #[allow(clippy::map_entry)]
-    pub fn add_key(&mut self, key: PublicKey, weight: Weight) -> Result<(), AddKeyFailure> {
+    pub fn add_key(&mut self, key: AccountHash, weight: Weight) -> Result<(), AddKeyFailure> {
         if self.0.len() == MAX_ASSOCIATED_KEYS {
             Err(AddKeyFailure::MaxKeysLimit)
         } else if self.0.contains_key(&key) {
@@ -34,7 +34,7 @@ impl AssociatedKeys {
     /// Removes key from the associated keys set.
     /// Returns true if value was found in the set prior to the removal, false
     /// otherwise.
-    pub fn remove_key(&mut self, key: &PublicKey) -> Result<(), RemoveKeyFailure> {
+    pub fn remove_key(&mut self, key: &AccountHash) -> Result<(), RemoveKeyFailure> {
         self.0
             .remove(key)
             .map(|_| ())
@@ -44,7 +44,7 @@ impl AssociatedKeys {
     /// Adds new AssociatedKey to the set.
     /// Returns true if added successfully, false otherwise.
     #[allow(clippy::map_entry)]
-    pub fn update_key(&mut self, key: PublicKey, weight: Weight) -> Result<(), UpdateKeyFailure> {
+    pub fn update_key(&mut self, key: AccountHash, weight: Weight) -> Result<(), UpdateKeyFailure> {
         if !self.0.contains_key(&key) {
             return Err(UpdateKeyFailure::MissingKey);
         }
@@ -53,15 +53,15 @@ impl AssociatedKeys {
         Ok(())
     }
 
-    pub fn get(&self, key: &PublicKey) -> Option<&Weight> {
+    pub fn get(&self, key: &AccountHash) -> Option<&Weight> {
         self.0.get(key)
     }
 
-    pub fn contains_key(&self, key: &PublicKey) -> bool {
+    pub fn contains_key(&self, key: &AccountHash) -> bool {
         self.0.contains_key(key)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&PublicKey, &Weight)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
         self.0.iter()
     }
 
@@ -80,7 +80,7 @@ impl AssociatedKeys {
     /// Uniqueness is determined based on the input collection properties,
     /// which is either BTreeSet (in [`AssociatedKeys::calculate_keys_weight`])
     /// or BTreeMap (in [`AssociatedKeys::total_keys_weight`]).
-    fn calculate_any_keys_weight<'a>(&self, keys: impl Iterator<Item = &'a PublicKey>) -> Weight {
+    fn calculate_any_keys_weight<'a>(&self, keys: impl Iterator<Item = &'a AccountHash>) -> Weight {
         let total = keys
             .filter_map(|key| self.0.get(key))
             .fold(0u8, |acc, w| acc.saturating_add(w.value()));
@@ -89,7 +89,7 @@ impl AssociatedKeys {
     }
 
     /// Calculates total weight of authorization keys provided by an argument
-    pub fn calculate_keys_weight(&self, authorization_keys: &BTreeSet<PublicKey>) -> Weight {
+    pub fn calculate_keys_weight(&self, authorization_keys: &BTreeSet<AccountHash>) -> Weight {
         self.calculate_any_keys_weight(authorization_keys.iter())
     }
 
@@ -99,8 +99,8 @@ impl AssociatedKeys {
     }
 
     /// Calculates total weight of all authorization keys excluding a given key
-    pub fn total_keys_weight_excluding(&self, public_key: PublicKey) -> Weight {
-        self.calculate_any_keys_weight(self.0.keys().filter(|&&element| element != public_key))
+    pub fn total_keys_weight_excluding(&self, account_hash: AccountHash) -> Weight {
+        self.calculate_any_keys_weight(self.0.keys().filter(|&&element| element != account_hash))
     }
 }
 
@@ -116,7 +116,7 @@ impl ToBytes for AssociatedKeys {
 
 impl FromBytes for AssociatedKeys {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (keys_map, rem) = BTreeMap::<PublicKey, Weight>::from_bytes(bytes)?;
+        let (keys_map, rem) = BTreeMap::<AccountHash, Weight>::from_bytes(bytes)?;
         let mut keys = AssociatedKeys::default();
         keys_map.into_iter().for_each(|(k, v)| {
             // NOTE: we're ignoring potential errors (duplicate key, maximum number of
@@ -131,12 +131,12 @@ impl FromBytes for AssociatedKeys {
 pub mod gens {
     use proptest::prelude::*;
 
-    use types::gens::{public_key_arb, weight_arb};
+    use types::gens::{account_hash_arb, weight_arb};
 
     use super::AssociatedKeys;
 
     pub fn associated_keys_arb(size: usize) -> impl Strategy<Value = AssociatedKeys> {
-        proptest::collection::btree_map(public_key_arb(), weight_arb(), size).prop_map(|keys| {
+        proptest::collection::btree_map(account_hash_arb(), weight_arb(), size).prop_map(|keys| {
             let mut associated_keys = AssociatedKeys::default();
             keys.into_iter().for_each(|(k, v)| {
                 associated_keys.add_key(k, v).unwrap();
@@ -151,7 +151,7 @@ mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 
     use types::{
-        account::{AddKeyFailure, PublicKey, Weight, ED25519_LENGTH, MAX_ASSOCIATED_KEYS},
+        account::{AccountHash, AddKeyFailure, Weight, ACCOUNT_HASH_LENGTH, MAX_ASSOCIATED_KEYS},
         bytesrepr,
     };
 
@@ -159,11 +159,9 @@ mod tests {
 
     #[test]
     fn associated_keys_add() {
-        let mut keys = AssociatedKeys::new(
-            PublicKey::ed25519_from([0u8; ED25519_LENGTH]),
-            Weight::new(1),
-        );
-        let new_pk = PublicKey::ed25519_from([1u8; ED25519_LENGTH]);
+        let mut keys =
+            AssociatedKeys::new(AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]), Weight::new(1));
+        let new_pk = AccountHash::new([1u8; ACCOUNT_HASH_LENGTH]);
         let new_pk_weight = Weight::new(2);
         assert!(keys.add_key(new_pk, new_pk_weight).is_ok());
         assert_eq!(keys.get(&new_pk), Some(&new_pk_weight))
@@ -173,7 +171,7 @@ mod tests {
     fn associated_keys_add_full() {
         let map = (0..MAX_ASSOCIATED_KEYS).map(|k| {
             (
-                PublicKey::ed25519_from([k as u8; ED25519_LENGTH]),
+                AccountHash::new([k as u8; ACCOUNT_HASH_LENGTH]),
                 Weight::new(k as u8),
             )
         });
@@ -185,7 +183,7 @@ mod tests {
         };
         assert_eq!(
             keys.add_key(
-                PublicKey::ed25519_from([100u8; ED25519_LENGTH]),
+                AccountHash::new([100u8; ACCOUNT_HASH_LENGTH]),
                 Weight::new(100)
             ),
             Err(AddKeyFailure::MaxKeysLimit)
@@ -194,7 +192,7 @@ mod tests {
 
     #[test]
     fn associated_keys_add_duplicate() {
-        let pk = PublicKey::ed25519_from([0u8; ED25519_LENGTH]);
+        let pk = AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]);
         let weight = Weight::new(1);
         let mut keys = AssociatedKeys::new(pk, weight);
         assert_eq!(
@@ -206,20 +204,20 @@ mod tests {
 
     #[test]
     fn associated_keys_remove() {
-        let pk = PublicKey::ed25519_from([0u8; ED25519_LENGTH]);
+        let pk = AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]);
         let weight = Weight::new(1);
         let mut keys = AssociatedKeys::new(pk, weight);
         assert!(keys.remove_key(&pk).is_ok());
         assert!(keys
-            .remove_key(&PublicKey::ed25519_from([1u8; ED25519_LENGTH]))
+            .remove_key(&AccountHash::new([1u8; ACCOUNT_HASH_LENGTH]))
             .is_err());
     }
 
     #[test]
     fn associated_keys_calculate_keys_once() {
-        let key_1 = PublicKey::ed25519_from([0; 32]);
-        let key_2 = PublicKey::ed25519_from([1; 32]);
-        let key_3 = PublicKey::ed25519_from([2; 32]);
+        let key_1 = AccountHash::new([0; 32]);
+        let key_2 = AccountHash::new([1; 32]);
+        let key_3 = AccountHash::new([2; 32]);
         let mut keys = AssociatedKeys::default();
 
         keys.add_key(key_2, Weight::new(2))
@@ -240,12 +238,12 @@ mod tests {
     #[test]
     fn associated_keys_total_weight() {
         let associated_keys = {
-            let mut res = AssociatedKeys::new(PublicKey::ed25519_from([1u8; 32]), Weight::new(1));
-            res.add_key(PublicKey::ed25519_from([2u8; 32]), Weight::new(11))
+            let mut res = AssociatedKeys::new(AccountHash::new([1u8; 32]), Weight::new(1));
+            res.add_key(AccountHash::new([2u8; 32]), Weight::new(11))
                 .expect("should add key 1");
-            res.add_key(PublicKey::ed25519_from([3u8; 32]), Weight::new(12))
+            res.add_key(AccountHash::new([3u8; 32]), Weight::new(12))
                 .expect("should add key 2");
-            res.add_key(PublicKey::ed25519_from([4u8; 32]), Weight::new(13))
+            res.add_key(AccountHash::new([4u8; 32]), Weight::new(13))
                 .expect("should add key 3");
             res
         };
@@ -257,16 +255,16 @@ mod tests {
 
     #[test]
     fn associated_keys_total_weight_excluding() {
-        let identity_key = PublicKey::ed25519_from([1u8; 32]);
+        let identity_key = AccountHash::new([1u8; 32]);
         let identity_key_weight = Weight::new(1);
 
-        let key_1 = PublicKey::ed25519_from([2u8; 32]);
+        let key_1 = AccountHash::new([2u8; 32]);
         let key_1_weight = Weight::new(11);
 
-        let key_2 = PublicKey::ed25519_from([3u8; 32]);
+        let key_2 = AccountHash::new([3u8; 32]);
         let key_2_weight = Weight::new(12);
 
-        let key_3 = PublicKey::ed25519_from([4u8; 32]);
+        let key_3 = AccountHash::new([4u8; 32]);
         let key_3_weight = Weight::new(13);
 
         let associated_keys = {
@@ -284,10 +282,10 @@ mod tests {
 
     #[test]
     fn overflowing_keys_weight() {
-        let identity_key = PublicKey::ed25519_from([1u8; 32]);
-        let key_1 = PublicKey::ed25519_from([2u8; 32]);
-        let key_2 = PublicKey::ed25519_from([3u8; 32]);
-        let key_3 = PublicKey::ed25519_from([4u8; 32]);
+        let identity_key = AccountHash::new([1u8; 32]);
+        let key_1 = AccountHash::new([2u8; 32]);
+        let key_2 = AccountHash::new([3u8; 32]);
+        let key_3 = AccountHash::new([4u8; 32]);
 
         let identity_key_weight = Weight::new(250);
         let weight_1 = Weight::new(1);
@@ -319,11 +317,11 @@ mod tests {
     #[test]
     fn serialization_roundtrip() {
         let mut keys = AssociatedKeys::default();
-        keys.add_key(PublicKey::ed25519_from([1; 32]), Weight::new(1))
+        keys.add_key(AccountHash::new([1; 32]), Weight::new(1))
             .unwrap();
-        keys.add_key(PublicKey::ed25519_from([2; 32]), Weight::new(2))
+        keys.add_key(AccountHash::new([2; 32]), Weight::new(2))
             .unwrap();
-        keys.add_key(PublicKey::ed25519_from([3; 32]), Weight::new(3))
+        keys.add_key(AccountHash::new([3; 32]), Weight::new(3))
             .unwrap();
         bytesrepr::test_serialization_roundtrip(&keys);
     }

@@ -8,6 +8,7 @@ import {
   BalanceService,
   CasperService,
   decodeBase64,
+  encodeBase16,
   encodeBase64,
   Keys
 } from 'casperlabs-sdk';
@@ -18,6 +19,25 @@ import { FieldState } from 'formstate';
 // https://tweetnacl.js.org/#/sign
 
 type AccountB64 = string;
+
+export const publicKeyHashForEd25519 = (publicKeyBase64: string) => {
+  return Keys.Ed25519.publicKeyHash(decodeBase64(publicKeyBase64));
+};
+
+export const getPublicKeyHash = (account: UserAccount) => {
+  if (!account.sigAlgorithm || account.sigAlgorithm === 'ed25519') {
+    return publicKeyHashForEd25519(account.publicKeyBase64);
+  }
+  throw new Error(`Clarity currently don't support ${account.sigAlgorithm}`);
+};
+
+export const getPublicKeyHashBase16 = (account: UserAccount) => {
+  return encodeBase16(getPublicKeyHash(account));
+};
+
+export const getPublicKeyHashBase64 = (account: UserAccount) => {
+  return encodeBase64(getPublicKeyHash(account));
+};
 
 export class AuthContainer {
   @observable user: User | null = null;
@@ -94,7 +114,8 @@ export class AuthContainer {
     let latestBlockHash: BlockHash | null = null;
 
     for (let account of this.accounts || []) {
-      const balance = this.balances.get(account.publicKeyBase64);
+      const publicKeyHashBase64 = getPublicKeyHashBase64(account);
+      const balance = this.balances.get(publicKeyHashBase64);
 
       const needsUpdate =
         force ||
@@ -109,10 +130,10 @@ export class AuthContainer {
 
         const latestAccountBalance = await this.balanceService.getAccountBalance(
           latestBlockHash,
-          decodeBase64(account.publicKeyBase64)
+          getPublicKeyHash(account)
         );
 
-        this.balances.set(account.publicKeyBase64, {
+        this.balances.set(publicKeyHashBase64, {
           checkedAt: now,
           blockHash: latestBlockHash,
           balance: latestAccountBalance
@@ -140,7 +161,8 @@ export class AuthContainer {
       // Add the public key to the accounts and save it to Auth0.
       await this.addAccount({
         name: form.name.$!,
-        publicKeyBase64: form.publicKeyBase64.$!
+        publicKeyBase64: form.publicKeyBase64.$!,
+        sigAlgorithm: 'ed25519'
       });
       return true;
     } else {
@@ -153,7 +175,8 @@ export class AuthContainer {
     if (form instanceof ImportAccountFormData && form.clean()) {
       await this.addAccount({
         name: form.name.$,
-        publicKeyBase64: form.publicKeyBase64.$
+        publicKeyBase64: form.publicKeyBase64.$,
+        sigAlgorithm: 'ed25519'
       });
       return true;
     } else {

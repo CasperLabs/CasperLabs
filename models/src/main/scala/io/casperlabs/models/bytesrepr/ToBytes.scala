@@ -77,6 +77,10 @@ object ToBytes {
     override def toBytes(list: Seq[T]): Array[Byte] = _toBytesSeq(list)
   }
 
+  implicit def toBytesSet[T: ToBytes]: ToBytes[Set[T]] = new ToBytes[Set[T]] {
+    override def toBytes(set: Set[T]): Array[Byte] = _toBytesSeq(set.toSeq)
+  }
+
   implicit def toBytesIndexedSeq[T: ToBytes]: ToBytes[IndexedSeq[T]] = new ToBytes[IndexedSeq[T]] {
     override def toBytes(list: IndexedSeq[T]): Array[Byte] = _toBytesSeq(list)
   }

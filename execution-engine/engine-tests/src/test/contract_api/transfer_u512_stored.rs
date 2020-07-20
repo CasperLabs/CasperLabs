@@ -7,13 +7,12 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use types::{account::PublicKey, U512};
+use types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
+const FUNCTION_NAME: &str = "transfer";
 const CONTRACT_KEY_NAME: &str = "transfer_to_account";
 const CONTRACT_TRANSFER_TO_ACCOUNT_NAME: &str = "transfer_to_account_u512";
-const STANDARD_PAYMENT_CONTRACT_NAME: &str = "standard_payment";
-const STORE_AT_HASH: &str = "hash";
-const ACCOUNT_1_ADDR: PublicKey = PublicKey::ed25519_from([1u8; 32]);
+const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const TRANSFER_AMOUNT: u64 = 1;
 
 #[ignore]
@@ -25,7 +24,7 @@ fn should_transfer_to_account_stored() {
         let exec_request = ExecuteRequestBuilder::standard(
             DEFAULT_ACCOUNT_ADDR,
             &format!("{}_stored.wasm", CONTRACT_TRANSFER_TO_ACCOUNT_NAME),
-            (STORE_AT_HASH.to_string(),),
+            RuntimeArgs::default(),
         )
         .build();
         builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -60,11 +59,14 @@ fn should_transfer_to_account_stored() {
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(contract_hash.to_vec(), (ACCOUNT_1_ADDR, transferred_amount))
-            .with_payment_code(
-                &format!("{}.wasm", STANDARD_PAYMENT_CONTRACT_NAME),
-                (U512::from(payment_purse_amount),),
+            .with_stored_session_hash(
+                contract_hash,
+                FUNCTION_NAME,
+                runtime_args! { "target" => ACCOUNT_1_ADDR, "amount" => transferred_amount },
             )
+            .with_empty_payment_bytes(runtime_args! {
+                "amount" => U512::from(payment_purse_amount),
+            })
             .with_authorization_keys(&[DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
             .build();

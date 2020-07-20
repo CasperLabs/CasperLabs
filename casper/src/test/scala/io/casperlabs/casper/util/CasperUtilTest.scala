@@ -128,7 +128,7 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
         *
         */
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         b2      <- createAndStoreMessage[Task](Seq(genesis.blockHash), v2)
         b3      <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1)
         b4      <- createAndStoreMessage[Task](Seq(b2.blockHash), v2)
@@ -171,7 +171,7 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
       val bonds = validators.map(v => Bond(v, 1))
 
       for {
-        genesis        <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis        <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         dag            <- storage.getRepresentation
         genesisMessage = Message.fromBlock(genesis).get
 
@@ -289,7 +289,7 @@ class CasperUtilTest extends FlatSpec with Matchers with BlockGenerator with Sto
       val bonds = validators.map(v => Bond(v, 1))
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         b1 <- createAndStoreMessage[Task](
                Seq(genesis.blockHash),
                v0,

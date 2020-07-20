@@ -7,7 +7,7 @@ import cats._
 import cats.data.WriterT
 import cats.effect.Clock
 import cats.implicits._
-import io.casperlabs.crypto.Keys.PublicKeyBS
+import io.casperlabs.crypto.Keys.PublicKeyHashBS
 import io.casperlabs.models.Message
 import io.casperlabs.storage.BlockHash
 import org.apache.commons.math3.util.ArithmeticUtils
@@ -85,10 +85,10 @@ package object highway {
   }
 
   /** Determine the leader of any given round. */
-  type LeaderFunction = Ticks => PublicKeyBS
+  type LeaderFunction = Ticks => PublicKeyHashBS
 
   /** Determine an order in which this validator should produce their omega messages in any given round. */
-  type OmegaFunction = Ticks => Seq[PublicKeyBS]
+  type OmegaFunction = Ticks => Seq[PublicKeyHashBS]
 
   type ValidatedMessage = Message @@ ValidatedTag
   def Validated(m: Message) = m.asInstanceOf[ValidatedMessage]

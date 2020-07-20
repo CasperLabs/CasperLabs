@@ -15,42 +15,64 @@ message DeployCode {
 message StoredContractHash{
   bytes hash = 1; // public hash of a stored contract
   bytes args = 2; // ABI-encoded arguments
+  string entry_point_name = 3; // optional entry point name (defaults to "call")
 }
 
 message StoredContractName{
-  // name of a stored contract associated with the executing account (uref or hash)
-  string stored_contract_name = 1;
+  // name of a stored contract associated with the executing account
+  string name = 1;
   bytes args = 2;   // ABI-encoded arguments
+  string entry_point_name = 3; // optional entry point name (defaults to "call")
 }
 
-message StoredContractURef{
-  bytes uref = 1; // uref of a stored contract
-  bytes args = 2; // ABI-encoded arguments
+message StoredContractPackage {
+    string name = 1; // key name
+    oneof optional_version {
+        uint32 version = 2; // optional specific version (defaults to highest)
+    }
+    string entry_point_name = 3; // finds header by entrypoint name
+    bytes args = 4; // ABI-encoded arguments
+}
+
+message StoredContractPackageHash {
+    bytes hash = 1; // public hash of a stored contract package
+    oneof optional_version {
+        uint32 version = 2;     // finds active version
+    }
+    string entry_point_name = 3; // finds header by entrypoint name
+    bytes args = 4; // ABI-encoded arguments
+}
+
+message Transfer {
+    bytes args = 1; // ABI-encoded arguments
 }
 
 message DeployPayload {
+  reserved 4; // StoredContractURef is no longer supported
   oneof payload {
     DeployCode deploy_code = 1;
-    StoredContractHash stored_contract_hash = 2;
-    StoredContractName stored_contract_name = 3;
-    StoredContractURef stored_contract_uref = 4;
+    StoredContractHash stored_contract_hash = 2;  
+    StoredContractName stored_contract_name = 3;  
+    StoredContractPackage stored_package_by_name = 5; 
+    StoredContractPackageHash stored_package_by_hash = 6;
+    Transfer transfer = 7;
   }
 }
 
 message Bond {
-    bytes validator_public_key = 1;
+    bytes validator_account_hash = 1;
     io.casperlabs.casper.consensus.state.BigInt stake = 2;
 }
 
 message DeployItem {
     reserved 5; // motes in payment
     reserved 7; // nonce
-    // Public key of the account which is the context of the execution.
+    // Public key hash of the account which is the context of the execution.
     bytes address = 1; // length 32 bytes
     DeployPayload session = 3;
     DeployPayload payment = 4;
     uint64 gas_price = 6; // in units of Mote / Gas
-    // Public keys used to sign this deploy, to be checked against the keys
+    // Hashes of the public keys used to sign this deploy, to be checked against the keys
     // associated with the account.
     repeated bytes authorization_keys = 8;
     bytes deploy_hash = 9;
@@ -260,9 +282,9 @@ message ChainSpec {
             repeated GenesisAccount accounts = 4;
             // costs at genesis
             CostTable costs = 5;
-    
+
             message GenesisAccount {
-                bytes public_key = 1;
+                bytes public_key_hash = 1;
                 io.casperlabs.casper.consensus.state.BigInt balance = 2; // in motes
                 io.casperlabs.casper.consensus.state.BigInt bonded_amount = 3; // in motes, 0 means "not bonded"
             }

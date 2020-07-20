@@ -19,6 +19,7 @@ import io.casperlabs.storage.block.BlockStorage
 import monix.eval.Task
 import org.scalatest.{FlatSpec, Matchers}
 import io.casperlabs.models.Message
+import io.casperlabs.casper.ValidatorIdentity
 
 class BlockQueryResponseAPITest extends FlatSpec with Matchers with StorageFixture {
   implicit val timeEff = new LogicalTime[Task]
@@ -41,7 +42,7 @@ class BlockQueryResponseAPITest extends FlatSpec with Matchers with StorageFixtu
       protocolVersion = version,
       timestamp = 1527191663,
       chainName = "casperlabs",
-      creator = Keys.PublicKey(Array.emptyByteArray),
+      creator = ValidatorIdentity.empty,
       validatorSeqNum = 0,
       validatorPrevBlockHash = ByteString.EMPTY
     )
@@ -76,6 +77,11 @@ class BlockQueryResponseAPITest extends FlatSpec with Matchers with StorageFixtu
   val secondBlockSenderString: String =
     "3456789101112131415161718192345678910111213141516171819261718192"
   val secondBlockSender: ByteString = ProtoUtil.stringToByteString(secondBlockSenderString)
+  val secondValidator = ValidatorIdentity(
+    Keys.PublicKey(secondBlockSender.toByteArray),
+    Keys.PrivateKey(secondBlockSender.toByteArray),
+    Ed25519
+  )
   val secondBlock = ProtoUtil.block(
     justifications,
     genesisBlock.getHeader.getState.postStateHash,
@@ -90,9 +96,7 @@ class BlockQueryResponseAPITest extends FlatSpec with Matchers with StorageFixtu
     timestamp,
     Message.asJRank(1),
     Message.asMainRank(1),
-    Keys.PublicKey(secondBlockSender.toByteArray),
-    Keys.PrivateKey(secondBlockSender.toByteArray),
-    Ed25519,
+    secondValidator,
     ByteString.EMPTY,
     0,
     false
@@ -121,7 +125,9 @@ class BlockQueryResponseAPITest extends FlatSpec with Matchers with StorageFixtu
         _ = blockInfo.getSummary.getHeader.deployCount should be(deployCount)
         _ = blockInfo.getSummary.getHeader.parentHashes.head should be(genesisHash)
         _ = blockInfo.getSummary.getHeader.parentHashes should be(parentsHashList)
-        _ = blockInfo.getSummary.getHeader.validatorPublicKey should be(secondBlockSender)
+        _ = blockInfo.getSummary.getHeader.validatorPublicKeyHash should be(
+          secondValidator.publicKeyHashBS
+        )
         _ = blockInfo.getSummary.getHeader.chainName should be(chainName)
       } yield ()
   }

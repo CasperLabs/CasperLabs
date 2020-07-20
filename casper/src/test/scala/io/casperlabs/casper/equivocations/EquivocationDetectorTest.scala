@@ -35,7 +35,7 @@ class EquivocationDetectorTest
   def createMessageAndTestEquivocateDetector(
       parentsHashList: Seq[BlockHash],
       lfb: Block,
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       justifications: collection.Map[Validator, BlockHash] = HashMap.empty[Validator, BlockHash],
       rankOfLowestBaseBlockExpect: Option[Long],
       messageType: Block.MessageType = Block.MessageType.BLOCK,
@@ -77,7 +77,7 @@ class EquivocationDetectorTest
   def createBlockAndCheckEquivocatorsFromViewOfBlock(
       parentsHashList: Seq[BlockHash],
       lfb: Block,
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       justifications: collection.Map[Validator, BlockHash] = HashMap.empty[Validator, BlockHash],
       rankOfLowestBaseBlockExpect: Option[Long],
       visibleEquivocatorExpected: Set[Validator]
@@ -121,7 +121,7 @@ class EquivocationDetectorTest
       val v0              = generateValidator("V0")
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         b1 <- createMessageAndTestEquivocateDetector(
                Seq(genesis.blockHash),
                genesis,
@@ -289,7 +289,7 @@ class EquivocationDetectorTest
       val v0              = generateValidator("V0")
       val v1              = generateValidator("V1")
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         _ <- createMessageAndTestEquivocateDetector(
               Seq(genesis.blockHash),
               genesis,
@@ -338,7 +338,7 @@ class EquivocationDetectorTest
       val v0              = generateValidator("V0")
       val v1              = generateValidator("V1")
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         b1 <- createMessageAndTestEquivocateDetector(
                Seq(genesis.blockHash),
                genesis,
@@ -398,7 +398,7 @@ class EquivocationDetectorTest
       val v0              = generateValidator("V0")
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         b1 <- createMessageAndTestEquivocateDetector(
                Seq(genesis.blockHash),
                genesis,
@@ -454,7 +454,7 @@ class EquivocationDetectorTest
       val v0              = generateValidator("V0")
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         b1 <- createMessageAndTestEquivocateDetector(
                Seq(genesis.blockHash),
                genesis,
@@ -504,7 +504,7 @@ class EquivocationDetectorTest
       val v2              = generateValidator("V2")
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         a1 <- createBlockAndCheckEquivocatorsFromViewOfBlock(
                Seq(genesis.blockHash),
                genesis,

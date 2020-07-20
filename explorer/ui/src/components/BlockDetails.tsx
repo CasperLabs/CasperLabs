@@ -143,7 +143,7 @@ const DeploysTable = observer(
             deploy
               .getDeploy()!
               .getHeader()!
-              .getAccountPublicKey_asU8()
+              .getAccountPublicKeyHash_asU8()
           );
           return (
             <tr key={i}>
@@ -179,7 +179,7 @@ const blockAttrs: (block: BlockInfo) => Array<[string, any]> = (
 ) => {
   const id = encodeBase16(block.getSummary()!.getBlockHash_asU8());
   const header = block.getSummary()!.getHeader()!;
-  const validatorId = encodeBase16(header.getValidatorPublicKey_asU8());
+  const validatorId = encodeBase16(header.getValidatorPublicKeyHash_asU8());
   const stats = block.getStatus()!.getStats()!;
   return [
     ['Block Hash', id],
@@ -202,7 +202,8 @@ const blockAttrs: (block: BlockInfo) => Array<[string, any]> = (
           .getState()!
           .getBondsList()
           .find(
-            x => encodeBase16(x.getValidatorPublicKey_asU8()) === validatorId
+            x =>
+              encodeBase16(x.getValidatorPublicKeyHash_asU8()) === validatorId
           );
         // Genesis doesn't have a validator.
         return (
@@ -235,13 +236,16 @@ const blockAttrs: (block: BlockInfo) => Array<[string, any]> = (
     [
       'Children',
       <ul>
-        {block.getStatus()!.getChildHashesList_asU8().map((x, idx) => (
-          <li key={idx}>
-            <BlockLink blockHash={x} />
-          </li>
-        ))}
+        {block
+          .getStatus()!
+          .getChildHashesList_asU8()
+          .map((x, idx) => (
+            <li key={idx}>
+              <BlockLink blockHash={x} />
+            </li>
+          ))}
       </ul>
-    ],
+    ]
   ];
 };
 

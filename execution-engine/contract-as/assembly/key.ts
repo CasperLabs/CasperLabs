@@ -19,46 +19,40 @@ export enum KeyVariant {
     UREF_ID = 2,
 }
 
-/**
- * The ID of an ED25519 public key.
- */
-export const PUBLIC_KEY_ED25519_ID: u8 = 0;
-
 /** A cryptographic public key. */
-export class PublicKey {
+export class AccountHash {
     /**
-     * Constructs a new `PublicKey`.
+     * Constructs a new `AccountHash`.
      *
-     * @param variant An ID of the used key variant.
      * @param bytes The bytes constituting the public key.
      */
-    constructor(public variant: u8, public bytes: Uint8Array) {}
+    constructor(public bytes: Uint8Array) {}
 
-    /** Checks whether two `PublicKey`s are equal. */
+    /** Checks whether two `AccountHash`s are equal. */
     @operator("==")
-    equalsTo(other: PublicKey): bool {
-        return this.variant == other.variant && checkTypedArrayEqual(this.bytes, other.bytes);
+    equalsTo(other: AccountHash): bool {
+        return checkTypedArrayEqual(this.bytes, other.bytes);
     }
 
-    /** Checks whether two `PublicKey`s are not equal. */
+    /** Checks whether two `AccountHash`s are not equal. */
     @operator("!=")
-    notEqualsTo(other: PublicKey): bool {
+    notEqualsTo(other: AccountHash): bool {
         return !this.equalsTo(other);
     }
 
-    /** Deserializes a `PublicKey` from an array of bytes. */
-    static fromBytes(bytes: Uint8Array): Result<PublicKey> {
+    /** Deserializes a `AccountHash` from an array of bytes. */
+    static fromBytes(bytes: Uint8Array): Result<AccountHash> {
         if (bytes.length < 32) {
-            return new Result<PublicKey>(null, BytesreprError.EarlyEndOfStream, 0);
+            return new Result<AccountHash>(null, BytesreprError.EarlyEndOfStream, 0);
         }
 
-        let publicKeyBytes = bytes.subarray(0, 32);
-        let publicKey = new PublicKey(PUBLIC_KEY_ED25519_ID, publicKeyBytes);
-        let ref = new Ref<PublicKey>(publicKey);
-        return new Result<PublicKey>(ref, BytesreprError.Ok, 32);
+        let accountHashBytes = bytes.subarray(0, 32);
+        let accountHash = new AccountHash(accountHashBytes);
+        let ref = new Ref<AccountHash>(accountHash);
+        return new Result<AccountHash>(ref, BytesreprError.Ok, 32);
     }
 
-    /** Serializes a `PublicKey` into an array of bytes. */
+    /** Serializes a `AccountHash` into an array of bytes. */
     toBytes(): Array<u8> {
         return typedToArray(this.bytes);
     }
@@ -72,7 +66,7 @@ export class Key {
     variant: KeyVariant;
     hash: Uint8Array | null;
     uref: URef | null;
-    account: PublicKey | null;
+    account: AccountHash | null;
 
     /** Creates a `Key` from a given [[URef]]. */
     static fromURef(uref: URef): Key {
@@ -90,8 +84,8 @@ export class Key {
         return key;
     }
 
-    /** Creates a `Key` from a [[PublicKey]] representing an account. */
-    static fromAccount(account: PublicKey): Key {
+    /** Creates a `Key` from a [[<AccountHash>]] representing an account. */
+    static fromAccount(account: AccountHash): Key {
         let key = new Key();
         key.variant = KeyVariant.ACCOUNT_ID;
         key.account = account;
@@ -145,13 +139,13 @@ export class Key {
             return new Result<Key>(ref, BytesreprError.Ok, currentPos + urefResult.position);
         }
         else if (tag == KeyVariant.ACCOUNT_ID) {
-            let publicKeyBytes = bytes.subarray(1);
-            let publicKeyResult = PublicKey.fromBytes(publicKeyBytes);
-            if (publicKeyResult.hasError()) {
-                return new Result<Key>(null, publicKeyResult.error, currentPos);
+            let accountHashBytes = bytes.subarray(1);
+            let accountHashResult = AccountHash.fromBytes(accountHashBytes);
+            if (accountHashResult.hasError()) {
+                return new Result<Key>(null, accountHashResult.error, currentPos);
             }
-            currentPos += publicKeyResult.position;
-            let key = Key.fromAccount(publicKeyResult.value);
+            currentPos += accountHashResult.position;
+            let key = Key.fromAccount(accountHashResult.value);
             let ref = new Ref<Key>(key);
             return new Result<Key>(ref, BytesreprError.Ok, currentPos);
         }
@@ -180,7 +174,7 @@ export class Key {
         else if (this.variant == KeyVariant.ACCOUNT_ID) {
             let bytes = new Array<u8>();
             bytes.push(<u8>this.variant);
-            bytes = bytes.concat((<PublicKey>this.account).toBytes());
+            bytes = bytes.concat((<AccountHash>this.account).toBytes());
             return bytes;
         }
         else {
@@ -262,7 +256,7 @@ export class Key {
         }
         else if (this.variant == KeyVariant.ACCOUNT_ID) {
             if (other.variant == KeyVariant.ACCOUNT_ID) {
-                return <PublicKey>this.account == <PublicKey>other.account;
+                return <AccountHash>this.account == <AccountHash>other.account;
             }
             else {
                 return false;

@@ -31,7 +31,6 @@ use engine_grpc_server::engine_server::{
 use engine_shared::{
     account::Account,
     additive_map::AdditiveMap,
-    contract::Contract,
     gas::Gas,
     logging::{self, Settings, Style},
     newtypes::{Blake2bHash, CorrelationId},
@@ -46,9 +45,9 @@ use engine_storage::{
     trie_store::lmdb::LmdbTrieStore,
 };
 use types::{
-    account::PublicKey,
-    bytesrepr::{self, ToBytes},
-    CLValue, Key, URef, U512,
+    account::AccountHash,
+    bytesrepr::{self},
+    CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
 };
 
 use crate::internal::utils;
@@ -77,22 +76,22 @@ pub struct WasmTestBuilder<S> {
     /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
     /// exec call etc.
     transforms: Vec<AdditiveMap<Key, Transform>>,
-    bonded_validators: Vec<HashMap<PublicKey, U512>>,
+    bonded_validators: Vec<HashMap<AccountHash, U512>>,
     /// Cached genesis transforms
     genesis_account: Option<Account>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
-    /// Mint contract uref
-    mint_contract_uref: Option<URef>,
-    /// PoS contract uref
-    pos_contract_uref: Option<URef>,
-    /// Standard payment contract uref
-    standard_payment_uref: Option<URef>,
+    /// Mint contract key
+    mint_contract_hash: Option<ContractHash>,
+    /// PoS contract key
+    pos_contract_hash: Option<ContractHash>,
+    /// Standard payment contract key
+    standard_payment_hash: Option<ContractHash>,
 }
 
 impl<S> WasmTestBuilder<S> {
     fn initialize_logging() {
-        let log_settings = Settings::new(LevelFilter::Warn).with_style(Style::HumanReadable);
+        let log_settings = Settings::new(LevelFilter::Error).with_style(Style::HumanReadable);
         let _ = logging::initialize(log_settings);
     }
 }
@@ -117,9 +116,9 @@ impl Default for InMemoryWasmTestBuilder {
             bonded_validators: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_uref: None,
-            pos_contract_uref: None,
-            standard_payment_uref: None,
+            mint_contract_hash: None,
+            pos_contract_hash: None,
+            standard_payment_hash: None,
         }
     }
 }
@@ -138,9 +137,9 @@ impl<S> Clone for WasmTestBuilder<S> {
             bonded_validators: self.bonded_validators.clone(),
             genesis_account: self.genesis_account.clone(),
             genesis_transforms: self.genesis_transforms.clone(),
-            mint_contract_uref: self.mint_contract_uref,
-            pos_contract_uref: self.pos_contract_uref,
-            standard_payment_uref: self.standard_payment_uref,
+            mint_contract_hash: self.mint_contract_hash,
+            pos_contract_hash: self.pos_contract_hash,
+            standard_payment_hash: self.standard_payment_hash,
         }
     }
 }
@@ -206,9 +205,9 @@ impl LmdbWasmTestBuilder {
             bonded_validators: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_uref: None,
-            pos_contract_uref: None,
-            standard_payment_uref: None,
+            mint_contract_hash: None,
+            pos_contract_hash: None,
+            standard_payment_hash: None,
         }
     }
 
@@ -229,8 +228,8 @@ impl LmdbWasmTestBuilder {
         builder.genesis_hash = result.0.genesis_hash.clone();
         builder.post_state_hash = result.0.post_state_hash.clone();
         builder.bonded_validators = result.0.bonded_validators.clone();
-        builder.mint_contract_uref = result.0.mint_contract_uref;
-        builder.pos_contract_uref = result.0.pos_contract_uref;
+        builder.mint_contract_hash = result.0.mint_contract_hash;
+        builder.pos_contract_hash = result.0.pos_contract_hash;
         builder
     }
 
@@ -267,9 +266,9 @@ impl LmdbWasmTestBuilder {
             bonded_validators: Vec::new(),
             genesis_account: None,
             genesis_transforms: None,
-            mint_contract_uref: None,
-            pos_contract_uref: None,
-            standard_payment_uref: None,
+            mint_contract_hash: None,
+            pos_contract_hash: None,
+            standard_payment_hash: None,
         }
     }
 
@@ -302,9 +301,9 @@ where
             transforms: Vec::new(),
             bonded_validators: result.0.bonded_validators,
             genesis_account: result.0.genesis_account,
-            mint_contract_uref: result.0.mint_contract_uref,
-            pos_contract_uref: result.0.pos_contract_uref,
-            standard_payment_uref: result.0.standard_payment_uref,
+            mint_contract_hash: result.0.mint_contract_hash,
+            pos_contract_hash: result.0.pos_contract_hash,
+            standard_payment_hash: result.0.standard_payment_hash,
             genesis_transforms: result.0.genesis_transforms,
         }
     }
@@ -347,9 +346,9 @@ where
 
         self.genesis_hash = Some(state_root_hash.to_vec());
         self.post_state_hash = Some(state_root_hash.to_vec());
-        self.mint_contract_uref = Some(protocol_data.mint());
-        self.pos_contract_uref = Some(protocol_data.proof_of_stake());
-        self.standard_payment_uref = Some(protocol_data.standard_payment());
+        self.mint_contract_hash = Some(protocol_data.mint());
+        self.pos_contract_hash = Some(protocol_data.proof_of_stake());
+        self.standard_payment_hash = Some(protocol_data.standard_payment());
         self.genesis_account = Some(genesis_account);
         self.genesis_transforms = Some(transforms);
         self
@@ -378,7 +377,6 @@ where
         if query_response.has_failure() {
             return Err(query_response.take_failure());
         }
-
         bytesrepr::deserialize(query_response.take_success()).map_err(|err| format!("{}", err))
     }
 
@@ -457,7 +455,7 @@ where
             .take_bonded_validators()
             .into_iter()
             .map(TryInto::try_into)
-            .collect::<Result<HashMap<PublicKey, U512>, MappingError>>()
+            .collect::<Result<HashMap<AccountHash, U512>, MappingError>>()
             .unwrap();
         self.bonded_validators.push(bonded_validators);
         self
@@ -524,7 +522,7 @@ where
         self.transforms.clone()
     }
 
-    pub fn get_bonded_validators(&self) -> Vec<HashMap<PublicKey, U512>> {
+    pub fn get_bonded_validators(&self) -> Vec<HashMap<AccountHash, U512>> {
         self.bonded_validators.clone()
     }
 
@@ -535,19 +533,19 @@ where
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
 
-    pub fn get_mint_contract_uref(&self) -> URef {
-        self.mint_contract_uref
-            .expect("Unable to obtain mint contract uref. Please run genesis first.")
+    pub fn get_mint_contract_hash(&self) -> ContractHash {
+        self.mint_contract_hash
+            .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    pub fn get_pos_contract_uref(&self) -> URef {
-        self.pos_contract_uref
-            .expect("Unable to obtain pos contract uref. Please run genesis first.")
+    pub fn get_pos_contract_hash(&self) -> ContractHash {
+        self.pos_contract_hash
+            .expect("Unable to obtain pos contract. Please run genesis first.")
     }
 
-    pub fn get_standard_payment_contract_uref(&self) -> URef {
-        self.standard_payment_uref
-            .expect("Unable to obtain standard payment contract uref. Please run genesis first.")
+    pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
+        self.standard_payment_hash
+            .expect("Unable to obtain standard payment contract. Please run genesis first.")
     }
 
     pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, engine_shared::transform::Transform> {
@@ -595,7 +593,7 @@ where
 
     pub fn get_pos_contract(&self) -> Contract {
         let pos_contract: Key = self
-            .pos_contract_uref
+            .pos_contract_hash
             .expect("should have pos contract uref")
             .into();
         self.query(None, pos_contract, &[])
@@ -604,11 +602,9 @@ where
     }
 
     pub fn get_purse_balance(&self, purse: URef) -> U512 {
-        let mint = self.get_mint_contract_uref();
         let purse_addr = purse.addr();
-        let purse_bytes =
-            ToBytes::to_bytes(&purse_addr).expect("should be able to serialize purse bytes");
-        let balance_mapping_key = Key::local(mint.addr(), &purse_bytes);
+        let balance_mapping_key = Key::Hash(purse_addr);
+
         let base_key = self
             .query(None, balance_mapping_key, &[])
             .and_then(|v| CLValue::try_from(v).map_err(|error| format!("{:?}", error)))
@@ -621,25 +617,35 @@ where
             .expect("should parse balance into a U512")
     }
 
-    pub fn get_account(&self, public_key: PublicKey) -> Option<Account> {
-        let account_value = self
-            .query(None, Key::Account(public_key), &[])
-            .expect("should query account");
+    pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
+        match self.query(None, Key::Account(account_hash), &[]) {
+            Ok(account_value) => match account_value {
+                StoredValue::Account(account) => Some(account),
+                _ => None,
+            },
+            Err(_) => None,
+        }
+    }
 
-        if let StoredValue::Account(account) = account_value {
-            Some(account)
+    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+        let contract_value: StoredValue = self
+            .query(None, contract_hash.into(), &[])
+            .expect("should have contract value");
+
+        if let StoredValue::Contract(contract) = contract_value {
+            Some(contract)
         } else {
             None
         }
     }
 
-    pub fn get_contract(&self, contract_uref: URef) -> Option<Contract> {
+    pub fn get_contract_wasm(&self, contract_hash: ContractHash) -> Option<ContractWasm> {
         let contract_value: StoredValue = self
-            .query(None, Key::URef(contract_uref), &[])
+            .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
 
-        if let StoredValue::Contract(contract) = contract_value {
-            Some(contract)
+        if let StoredValue::ContractWasm(contract_wasm) = contract_value {
+            Some(contract_wasm)
         } else {
             None
         }
@@ -650,6 +656,15 @@ where
             .get_exec_response(index)
             .expect("should have exec response");
         utils::get_exec_costs(exec_response)
+    }
+
+    pub fn last_exec_gas_cost(&self) -> Gas {
+        let exec_response = self
+            .exec_responses
+            .last()
+            .expect("Expected to be called after run()");
+        let exec_result = exec_response.get(0).expect("should have result");
+        exec_result.cost()
     }
 
     pub fn exec_error_message(&self, index: usize) -> Option<String> {

@@ -8,7 +8,7 @@ use alloc::{
 };
 
 use types::{
-    account::PublicKey,
+    account::AccountHash,
     system_contract_errors::pos::{Error, Result},
     U512,
 };
@@ -33,24 +33,24 @@ const MAX_REL_DECREASE: u64 = 900_000;
 /// The stakes map, assigning the staked amount of motes to each bonded
 /// validator.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Stakes(pub BTreeMap<PublicKey, U512>);
+pub struct Stakes(pub BTreeMap<AccountHash, U512>);
 
 impl Stakes {
-    pub fn new(map: BTreeMap<PublicKey, U512>) -> Stakes {
+    pub fn new(map: BTreeMap<AccountHash, U512>) -> Stakes {
         Stakes(map)
     }
 
-    pub fn iter(&self) -> Iter<PublicKey, U512> {
+    pub fn iter(&self) -> Iter<AccountHash, U512> {
         self.0.iter()
     }
 
-    pub fn values(&self) -> Values<PublicKey, U512> {
+    pub fn values(&self) -> Values<AccountHash, U512> {
         self.0.values()
     }
 
     pub fn strings(&self) -> impl Iterator<Item = String> + '_ {
-        self.iter().map(|(public_key, balance)| {
-            let key_bytes = public_key.as_bytes();
+        self.iter().map(|(account_hash, balance)| {
+            let key_bytes = account_hash.as_bytes();
             let hex_key = base16::encode_lower(&key_bytes);
             format!("v_{}_{}", hex_key, balance)
         })
@@ -69,7 +69,7 @@ impl Stakes {
     /// * unbonding the specified amount is not allowed,
     /// * tries to unbond last validator,
     /// * validator was not bonded.
-    pub fn unbond(&mut self, validator: &PublicKey, maybe_amount: Option<U512>) -> Result<U512> {
+    pub fn unbond(&mut self, validator: &AccountHash, maybe_amount: Option<U512>) -> Result<U512> {
         let min = self
             .max_without(validator)
             .unwrap_or_else(U512::zero)
@@ -110,7 +110,7 @@ impl Stakes {
     }
 
     /// Adds `amount` to the validator's stakes.
-    pub fn bond(&mut self, validator: &PublicKey, amount: U512) {
+    pub fn bond(&mut self, validator: &AccountHash, amount: U512) {
         self.0
             .entry(*validator)
             .and_modify(|x| *x += amount)
@@ -118,7 +118,7 @@ impl Stakes {
     }
 
     /// Returns an error if bonding the specified amount is not allowed.
-    pub fn validate_bonding(&self, validator: &PublicKey, amount: U512) -> Result<()> {
+    pub fn validate_bonding(&self, validator: &AccountHash, amount: U512) -> Result<()> {
         let max = self
             .min_without(validator)
             .unwrap_or(U512::MAX)
@@ -141,7 +141,7 @@ impl Stakes {
     }
 
     /// Returns the minimum stake of the _other_ validators.
-    fn min_without(&self, validator: &PublicKey) -> Option<U512> {
+    fn min_without(&self, validator: &AccountHash) -> Option<U512> {
         self.0
             .iter()
             .filter(|(v, _)| *v != validator)
@@ -151,7 +151,7 @@ impl Stakes {
     }
 
     /// Returns the maximum stake of the _other_ validators.
-    fn max_without(&self, validator: &PublicKey) -> Option<U512> {
+    fn max_without(&self, validator: &AccountHash) -> Option<U512> {
         self.0
             .iter()
             .filter(|(v, _)| *v != validator)
@@ -170,7 +170,7 @@ impl Stakes {
 
 #[cfg(test)]
 mod tests {
-    use types::{account::PublicKey, system_contract_errors::pos::Error, U512};
+    use types::{account::AccountHash, system_contract_errors::pos::Error, U512};
 
     use super::Stakes;
 
@@ -181,7 +181,7 @@ mod tests {
         Stakes(
             stakes
                 .iter()
-                .map(|&(key, amount)| (PublicKey::ed25519_from(key), U512::from(amount)))
+                .map(|&(key, amount)| (AccountHash::new(key), U512::from(amount)))
                 .collect(),
         )
     }
@@ -191,9 +191,9 @@ mod tests {
         let mut stakes = new_stakes(&[(KEY2, 100)]);
         assert_eq!(
             Ok(()),
-            stakes.validate_bonding(&PublicKey::ed25519_from(KEY1), U512::from(5))
+            stakes.validate_bonding(&AccountHash::new(KEY1), U512::from(5))
         );
-        stakes.bond(&PublicKey::ed25519_from(KEY1), U512::from(5));
+        stakes.bond(&AccountHash::new(KEY1), U512::from(5));
         assert_eq!(new_stakes(&[(KEY1, 5), (KEY2, 100)]), stakes);
     }
 
@@ -202,9 +202,9 @@ mod tests {
         let mut stakes = new_stakes(&[(KEY1, 50), (KEY2, 100)]);
         assert_eq!(
             Ok(()),
-            stakes.validate_bonding(&PublicKey::ed25519_from(KEY1), U512::from(4))
+            stakes.validate_bonding(&AccountHash::new(KEY1), U512::from(4))
         );
-        stakes.bond(&PublicKey::ed25519_from(KEY1), U512::from(4));
+        stakes.bond(&AccountHash::new(KEY1), U512::from(4));
         assert_eq!(new_stakes(&[(KEY1, 54), (KEY2, 100)]), stakes);
     }
 
@@ -215,16 +215,16 @@ mod tests {
         assert_eq!(
             Err(Error::BondTooLarge),
             stakes.validate_bonding(
-                &PublicKey::ed25519_from(KEY1),
-                U512::from(super::MAX_REL_INCREASE * total / 1_000_000 + 1)
+                &AccountHash::new(KEY1),
+                U512::from(super::MAX_REL_INCREASE * total / 1_000_000 + 1),
             ),
             "Successfully bonded more than the maximum amount."
         );
         assert_eq!(
             Ok(()),
             stakes.validate_bonding(
-                &PublicKey::ed25519_from(KEY1),
-                U512::from(super::MAX_REL_INCREASE * total / 1_000_000)
+                &AccountHash::new(KEY1),
+                U512::from(super::MAX_REL_INCREASE * total / 1_000_000),
             ),
             "Failed to bond the maximum amount."
         );
@@ -235,7 +235,7 @@ mod tests {
         let mut stakes = new_stakes(&[(KEY1, 5), (KEY2, 100)]);
         assert_eq!(
             Ok(U512::from(5)),
-            stakes.unbond(&PublicKey::ed25519_from(KEY1), None)
+            stakes.unbond(&AccountHash::new(KEY1), None)
         );
         assert_eq!(new_stakes(&[(KEY2, 100)]), stakes);
     }
@@ -245,7 +245,7 @@ mod tests {
         let mut stakes = new_stakes(&[(KEY1, 5)]);
         assert_eq!(
             Err(Error::CannotUnbondLastValidator),
-            stakes.unbond(&PublicKey::ed25519_from(KEY1), None)
+            stakes.unbond(&AccountHash::new(KEY1), None)
         );
     }
 
@@ -254,7 +254,7 @@ mod tests {
         let mut stakes = new_stakes(&[(KEY1, 50)]);
         assert_eq!(
             Ok(U512::from(4)),
-            stakes.unbond(&PublicKey::ed25519_from(KEY1), Some(U512::from(4)))
+            stakes.unbond(&AccountHash::new(KEY1), Some(U512::from(4)))
         );
         assert_eq!(new_stakes(&[(KEY1, 46)]), stakes);
     }
@@ -266,16 +266,16 @@ mod tests {
         assert_eq!(
             Err(Error::UnbondTooLarge),
             stakes.unbond(
-                &PublicKey::ed25519_from(KEY1),
-                Some(U512::from(super::MAX_REL_DECREASE * total / 1_000_000 + 1))
+                &AccountHash::new(KEY1),
+                Some(U512::from(super::MAX_REL_DECREASE * total / 1_000_000 + 1)),
             ),
             "Successfully unbonded more than the maximum amount."
         );
         assert_eq!(
             Ok(U512::from(super::MAX_REL_DECREASE * total / 1_000_000)),
             stakes.unbond(
-                &PublicKey::ed25519_from(KEY1),
-                Some(U512::from(super::MAX_REL_DECREASE * total / 1_000_000))
+                &AccountHash::new(KEY1),
+                Some(U512::from(super::MAX_REL_DECREASE * total / 1_000_000)),
             ),
             "Failed to unbond the maximum amount."
         );

@@ -239,13 +239,6 @@
         access_rights = "READ"
 
 [[test]]
-    name = "Key -- Local"
-    expected = "0x030067050bbc6ec463e6105df87ebb721f5e526424e658e307efab508477e10c9c756f693af2155c6db754f3a66e8d7cfc6a517f2f49431084d08fcdba1cef9e75"
-    [test.data.key_value.local]
-        seed = "0x0067050bbc6ec463e6105df87ebb721f5e526424e658e307efab508477e10c9c"
-        hash = "0x756f693af2155c6db754f3a66e8d7cfc6a517f2f49431084d08fcdba1cef9e75"
-
-[[test]]
     name = "Option -- empty"
     expected = "0x00"
     [test.data.option_value]
@@ -489,14 +482,24 @@
 
 [[test]]
     name = "Contract"
-    expected = "0x20000000e82187cbd30654c56c93a2acb8b67eb0c1df1d2e13e5117972e35bb632ef113202000000040000006d696e74022f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be01180000006d795f7368617265645f73746174655f7661726961626c6502f813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e867107010000000000000000000000"
+    expected = "0x2101b9bc73ca4bbd74485b5e7c19774d78a7a6176948d2feb6abb5802211ccaeb5149dad4d0acc167cce4a69b5c66b523a400a0365a5621e2872f42c8184f5c702000000040000006d696e74022f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be01180000006d795f7368617265645f73746174655f7661726961626c6502f813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e867107010000000800000064656c65676174650800000064656c65676174650100000004000000617267310a080101010000000000000000000000"
     [test.data.contract]
-        bytes = "0xe82187cbd30654c56c93a2acb8b67eb0c1df1d2e13e5117972e35bb632ef1132"
+        contract_package_hash = "0x2101b9bc73ca4bbd74485b5e7c19774d78a7a6176948d2feb6abb5802211ccae"
+        contract_hash = "0xb5149dad4d0acc167cce4a69b5c66b523a400a0365a5621e2872f42c8184f5c7"
         named_keys = [
-            {key = "my_shared_state_variable", value = {uref_value = {address = "0xf813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e8671", access_rights = "READ_ADD_WRITE"}}},
-            {key = "mint", value = {uref_value = {address = "0x2f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be", access_rights = "READ"}}}
+            {key = "mint", value = {uref_value = {address = "0x2f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be", access_rights = "READ"}}},
+            {key = "my_shared_state_variable", value = {uref_value = {address = "0xf813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e8671", access_rights = "READ_ADD_WRITE"}}}
         ]
         protocol_version = { major = 1, minor = 0, patch = 0 }
+
+        [[test.data.contract.entry_points]]
+            name = "delegate"
+            ret = { simple_type = "U512" }
+            access = { variant = "PUBLIC" }
+            entry_point_type = "CONTRACT"
+            [[test.data.contract.entry_points.args]]
+            name = "arg1"
+            type = { simple_type = "STRING"}
 
 [[test]]
     name = "StoredValue -- CLValue"
@@ -523,11 +526,21 @@
 
 [[test]]
     name = "StoredValue -- Contract"
-    expected = "0x0220000000e82187cbd30654c56c93a2acb8b67eb0c1df1d2e13e5117972e35bb632ef113202000000040000006d696e74022f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be01180000006d795f7368617265645f73746174655f7661726961626c6502f813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e867107010000000000000000000000"
+    expected = "0x032101b9bc73ca4bbd74485b5e7c19774d78a7a6176948d2feb6abb5802211ccaeb5149dad4d0acc167cce4a69b5c66b523a400a0365a5621e2872f42c8184f5c702000000040000006d696e74022f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be01180000006d795f7368617265645f73746174655f7661726961626c6502f813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e867107010000000800000064656c65676174650800000064656c65676174650100000004000000617267310a080101010000000000000000000000"
     [test.data.stored_value.contract]
-        bytes = "0xe82187cbd30654c56c93a2acb8b67eb0c1df1d2e13e5117972e35bb632ef1132"
+        contract_package_hash = "0x2101b9bc73ca4bbd74485b5e7c19774d78a7a6176948d2feb6abb5802211ccae"
+        contract_hash = "0xb5149dad4d0acc167cce4a69b5c66b523a400a0365a5621e2872f42c8184f5c7"
         named_keys = [
-            {key = "my_shared_state_variable", value = {uref_value = {address = "0xf813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e8671", access_rights = "READ_ADD_WRITE"}}},
-            {key = "mint", value = {uref_value = {address = "0x2f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be", access_rights = "READ"}}}
+            {key = "mint", value = {uref_value = {address = "0x2f1a106b3e87ce5727ce47e2b4821a6cf151c6f6ab49f57a37dd47348ae695be", access_rights = "READ"}}},
+            {key = "my_shared_state_variable", value = {uref_value = {address = "0xf813be901d901954ce95e3fcc4a5a16646e8bd0011930c41cdae85d4386e8671", access_rights = "READ_ADD_WRITE"}}}
         ]
         protocol_version = { major = 1, minor = 0, patch = 0 }
+
+        [[test.data.stored_value.contract.entry_points]]
+            name = "delegate"
+            ret = { simple_type = "U512" }
+            access = { variant = "PUBLIC" }
+            entry_point_type = "CONTRACT"
+            [[test.data.stored_value.contract.entry_points.args]]
+            name = "arg1"
+            type = { simple_type = "STRING"}

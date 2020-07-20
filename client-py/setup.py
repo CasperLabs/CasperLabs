@@ -16,12 +16,10 @@ from setuptools.command.develop import develop as DevelopCommand
 from setuptools.command.install import install as InstallCommand
 from distutils.spawn import find_executable
 
-
 THIS_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
 # Directory with Scala client's bundled contracts
 
-CONTRACTS_DIR = f"{THIS_DIRECTORY}/../client/src/main/resources"
 PROTOBUF_DIR = f"{THIS_DIRECTORY}/../protobuf"
 PROTO_DIR = f"{THIS_DIRECTORY}/casperlabs_client/proto"
 PACKAGE_DIR = f"{THIS_DIRECTORY}/casperlabs_client"
@@ -46,7 +44,7 @@ def proto_compiler_check():
 
 def python_compiler_check():
     if sys.version < "3.6":
-        sys.stderr.write(f"{NAME} is only supported on Python versions 3.6+.\n")
+        sys.stderr.write(f"{NAME} is only supported on Python versions 3.7.\n")
         sys.exit(-1)
 
 
@@ -74,8 +72,9 @@ def replace_in_place(pairs, file_name):
 
 
 def modify_files(description, pairs, files):
-    print(description, ":", files)
+    print(description)
     for file_name in files:
+        print(f"   {file_name}")
         replace_in_place(pairs, file_name)
 
 
@@ -83,9 +82,10 @@ def run_protoc(file_names, PROTO_DIR=PROTO_DIR):
     import grpc_tools
     from grpc_tools import protoc
 
-    print(f"Run protoc...: {file_names}")
+    print("Run protoc...")
     google_proto = join(dirname(grpc_tools.__file__), "_proto")
     for file_name in file_names:
+        print(f"   {file_name}")
         protoc.main(
             (
                 "",
@@ -165,34 +165,9 @@ def run_codegen():
         [(r"(import .*_pb2)", r"from . \1")],
         [fn for fn in glob(f"{PACKAGE_DIR}/*_grpc[.]py") if "_pb2_" not in fn],
     )
-    pattern = (
-        os.environ.get("TAG_NAME")
-        and "/root/bundled_contracts/*.wasm"
-        or os.path.join(CONTRACTS_DIR, "*.wasm")
-    )
-    bundled_contracts = list(glob(pattern))
-    if len(bundled_contracts) == 0:
-        raise Exception(
-            f"Could not find wasm files that should be bundled with the client. {pattern}"
-        )
-    for filename in bundled_contracts:
-        shutil.copy(filename, PACKAGE_DIR)
 
 
 def prepare_sdist():
-    contracts_dir = (
-        os.environ.get("TAG_NAME") and "/root/bundled_contracts" or CONTRACTS_DIR
-    )
-    bundled_contracts = [
-        f"{contracts_dir}/{f}"
-        for f in ["bonding.wasm", "transfer_to_account_u512.wasm", "unbonding.wasm"]
-    ]
-    for file_name in bundled_contracts:
-        if not os.path.exists(file_name):
-            raise Exception(f"Contract file {file_name} does not exit")
-        base_name = os.path.basename(file_name)
-        copyfile(file_name, os.path.join(PACKAGE_DIR, base_name))
-        print(f"Copied contract {base_name}")
     run_codegen()
 
 
@@ -221,24 +196,25 @@ setup(
     version=read_version(),
     packages=find_packages(exclude=["tests"]),
     setup_requires=[
-        "protobuf==3.9.1",
+        "protobuf==3.11.3",
         "grpcio-tools>=1.20",
         "in-place==0.4.0",
         "grpcio>=1.20",
     ],
     install_requires=[
-        "protobuf==3.9.1",
+        "protobuf==3.11.3",
         "grpcio>=1.20",
+        "grpclib==0.3.1",
         "pyblake2==1.1.2",
-        "ed25519==1.4",
         "cryptography==2.8",
+        "ecdsa==0.15",
         "pycryptodome==3.9.4",
     ],
     cmdclass={"install": CInstall, "develop": CDevelop},
     description="Python Client for interacting with a CasperLabs Node",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    package_data={NAME: [f"{THIS_DIRECTORY}/casperlabs_client/*.wasm", VERSION_FILE]},
+    package_data={NAME: [VERSION_FILE]},
     keywords="casperlabs blockchain ethereum smart-contracts",
     author="CasperLabs LLC",
     author_email="testing@casperlabs.io",
@@ -246,13 +222,11 @@ setup(
     zip_safe=False,
     classifiers=[
         "Development Status :: 3 - Alpha",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3 :: Only",
         "Operating System :: OS Independent",
         "Intended Audience :: Developers",
     ],
-    python_requires=">=3.6.0",
     url="https://casperlabs.io/",
     project_urls={
         "Source": "https://github.com/CasperLabs/CasperLabs/tree/dev/integration-testing/client/CasperLabsClient",

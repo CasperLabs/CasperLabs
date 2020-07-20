@@ -13,10 +13,10 @@ class StoredValueSerializationTest extends FlatSpec with Matchers with PropertyC
 }
 
 object StoredValueSerializationTest {
-  val genStoredValue: Gen[StoredValue] = Gen.choose(0, 2).flatMap {
+  val genStoredValue: Gen[StoredValue] = Gen.choose(0, 1).flatMap {
     case 0 => CLValueSerializationTest.genCLValue.map(v => StoredValue.CLValue(v))
     case 1 => AccountSerializationTest.genAccount.map(a => StoredValue.Account(a))
-    case 2 => ContractSerializationTest.genContract.map(c => StoredValue.Contract(c))
+    // case 2 => ContractSerializationTest.genContract.map(c => StoredValue.Contract(c))
   }
 
   implicit val arbStoredValue: Arbitrary[StoredValue] = Arbitrary(genStoredValue)

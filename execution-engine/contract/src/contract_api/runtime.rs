@@ -3,18 +3,19 @@
 // Can be removed once https://github.com/rust-lang/rustfmt/issues/3362 is resolved.
 #[rustfmt::skip]
 use alloc::vec;
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
 use casperlabs_types::{
-    account::PublicKey,
+    account::AccountHash,
     api_error,
     bytesrepr::{self, FromBytes},
-    ApiError, BlockTime, CLTyped, CLValue, ContractRef, Key, Phase, URef,
-    BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
+    contracts::{ContractVersion, NamedKeys},
+    ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
+    RuntimeArgs, URef, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
 
-use crate::{args_parser::ArgsParser, contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
+use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 
 /// Returns the given [`CLValue`] to the host, terminating the currently running module.
 ///
@@ -43,29 +44,78 @@ pub fn revert<T: Into<ApiError>>(error: T) -> ! {
 /// If the stored contract calls [`ret`], then that value is returned from `call_contract`.  If the
 /// stored contract calls [`revert`], then execution stops and `call_contract` doesn't return.
 /// Otherwise `call_contract` returns `()`.
-#[allow(clippy::ptr_arg)]
-pub fn call_contract<A: ArgsParser, T: CLTyped + FromBytes>(c_ptr: ContractRef, args: A) -> T {
-    let contract_key: Key = c_ptr.into();
-    let (key_ptr, key_size, _bytes1) = contract_api::to_ptr(contract_key);
-    let (args_ptr, args_size, _bytes2) = ArgsParser::parse(args)
-        .map(contract_api::to_ptr)
-        .unwrap_or_revert();
+pub fn call_contract<T: CLTyped + FromBytes>(
+    contract_hash: ContractHash,
+    entry_point_name: &str,
+    runtime_args: RuntimeArgs,
+) -> T {
+    let (contract_hash_ptr, contract_hash_size, _bytes1) = contract_api::to_ptr(contract_hash);
+    let (entry_point_name_ptr, entry_point_name_size, _bytes2) =
+        contract_api::to_ptr(entry_point_name);
+    let (runtime_args_ptr, runtime_args_size, _bytes2) = contract_api::to_ptr(runtime_args);
 
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
         let ret = unsafe {
             ext_ffi::call_contract(
-                key_ptr,
-                key_size,
-                args_ptr,
-                args_size,
+                contract_hash_ptr,
+                contract_hash_size,
+                entry_point_name_ptr,
+                entry_point_name_size,
+                runtime_args_ptr,
+                runtime_args_size,
                 bytes_written.as_mut_ptr(),
             )
         };
         api_error::result_from(ret).unwrap_or_revert();
         unsafe { bytes_written.assume_init() }
     };
+    deserialize_contract_result(bytes_written)
+}
 
+/// Invokes the specified `entry_point_name` of stored logic at a specific `contract_package_hash`
+/// address, for the most current version of a contract package by default or a specific
+/// `contract_version` if one is provided, and passing the provided `runtime_args` to it
+///
+/// If the stored contract calls [`ret`], then that value is returned from
+/// `call_versioned_contract`.  If the stored contract calls [`revert`], then execution stops and
+/// `call_versioned_contract` doesn't return. Otherwise `call_versioned_contract` returns `()`.
+pub fn call_versioned_contract<T: CLTyped + FromBytes>(
+    contract_package_hash: ContractPackageHash,
+    contract_version: Option<ContractVersion>,
+    entry_point_name: &str,
+    runtime_args: RuntimeArgs,
+) -> T {
+    let (contract_package_hash_ptr, contract_package_hash_size, _bytes) =
+        contract_api::to_ptr(contract_package_hash);
+    let (contract_version_ptr, contract_version_size, _bytes) =
+        contract_api::to_ptr(contract_version);
+    let (entry_point_name_ptr, entry_point_name_size, _bytes) =
+        contract_api::to_ptr(entry_point_name);
+    let (runtime_args_ptr, runtime_args_size, _bytes) = contract_api::to_ptr(runtime_args);
+
+    let bytes_written = {
+        let mut bytes_written = MaybeUninit::uninit();
+        let ret = unsafe {
+            ext_ffi::call_versioned_contract(
+                contract_package_hash_ptr,
+                contract_package_hash_size,
+                contract_version_ptr,
+                contract_version_size,
+                entry_point_name_ptr,
+                entry_point_name_size,
+                runtime_args_ptr,
+                runtime_args_size,
+                bytes_written.as_mut_ptr(),
+            )
+        };
+        api_error::result_from(ret).unwrap_or_revert();
+        unsafe { bytes_written.assume_init() }
+    };
+    deserialize_contract_result(bytes_written)
+}
+
+fn deserialize_contract_result<T: CLTyped + FromBytes>(bytes_written: usize) -> T {
     let serialized_result = if bytes_written == 0 {
         // If no bytes were written, the host buffer hasn't been set and hence shouldn't be read.
         vec![]
@@ -83,27 +133,15 @@ pub fn call_contract<A: ArgsParser, T: CLTyped + FromBytes>(c_ptr: ContractRef, 
     bytesrepr::deserialize(serialized_result).unwrap_or_revert()
 }
 
-/// Takes the name of a (non-mangled) `extern "C"` function to store as a contract under the given
-/// [`URef`] which should already reference a stored contract.
-///
-/// If successful, this overwrites the value under `uref` with a new contract instance containing
-/// the original contract's named_keys, the current protocol version, and the newly created bytes of
-/// the stored function.
-pub fn upgrade_contract_at_uref(name: &str, uref: URef) {
-    let (name_ptr, name_size, _bytes) = contract_api::to_ptr(name);
-    let key: Key = uref.into();
-    let (key_ptr, key_size, _bytes) = contract_api::to_ptr(key);
-    let result_value =
-        unsafe { ext_ffi::upgrade_contract_at_uref(name_ptr, name_size, key_ptr, key_size) };
-    match api_error::result_from(result_value) {
-        Ok(()) => (),
-        Err(error) => revert(error),
-    }
-}
-
-fn get_arg_size(i: u32) -> Option<usize> {
+fn get_named_arg_size(name: &str) -> Option<usize> {
     let mut arg_size: usize = 0;
-    let ret = unsafe { ext_ffi::get_arg_size(i as usize, &mut arg_size as *mut usize) };
+    let ret = unsafe {
+        ext_ffi::get_named_arg_size(
+            name.as_bytes().as_ptr(),
+            name.len(),
+            &mut arg_size as *mut usize,
+        )
+    };
     match api_error::result_from(ret) {
         Ok(_) => Some(arg_size),
         Err(ApiError::MissingArgument) => None,
@@ -111,32 +149,39 @@ fn get_arg_size(i: u32) -> Option<usize> {
     }
 }
 
-/// Returns the i-th argument passed to the host for the current module invocation.
+/// Returns given named argument passed to the host for the current module invocation.
 ///
 /// Note that this is only relevant to contracts stored on-chain since a contract deployed directly
 /// is not invoked with any arguments.
-pub fn get_arg<T: FromBytes>(i: u32) -> Option<Result<T, bytesrepr::Error>> {
-    let arg_size = get_arg_size(i)?;
+pub fn get_named_arg<T: FromBytes>(name: &str) -> T {
+    let arg_size = get_named_arg_size(name).unwrap_or_revert_with(ApiError::MissingArgument);
     let arg_bytes = if arg_size > 0 {
         let res = {
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
-            let ret = unsafe { ext_ffi::get_arg(i as usize, data_non_null_ptr.as_ptr(), arg_size) };
+            let ret = unsafe {
+                ext_ffi::get_named_arg(
+                    name.as_bytes().as_ptr(),
+                    name.len(),
+                    data_non_null_ptr.as_ptr(),
+                    arg_size,
+                )
+            };
             let data =
                 unsafe { Vec::from_raw_parts(data_non_null_ptr.as_ptr(), arg_size, arg_size) };
             api_error::result_from(ret).map(|_| data)
         };
-        // Assumed to be safe as `get_arg_size` checks the argument already
+        // Assumed to be safe as `get_named_arg_size` checks the argument already
         res.unwrap_or_revert()
     } else {
-        // Avoids allocation with 0 bytes and a call to get_arg
+        // Avoids allocation with 0 bytes and a call to get_named_arg
         Vec::new()
     };
-    Some(bytesrepr::deserialize(arg_bytes))
+    bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument)
 }
 
-/// Returns the caller of the current context, i.e. the [`PublicKey`] of the account which made the
-/// deploy request.
-pub fn get_caller() -> PublicKey {
+/// Returns the caller of the current context, i.e. the [`AccountHash`] of the account which made
+/// the deploy request.
+pub fn get_caller() -> AccountHash {
     let output_size = {
         let mut output_size = MaybeUninit::uninit();
         let ret = unsafe { ext_ffi::get_caller(output_size.as_mut_ptr()) };
@@ -235,7 +280,7 @@ pub fn remove_key(name: &str) {
 ///
 /// The current context is either the caller's account or a stored contract depending on whether the
 /// currently-executing module is a direct call or a sub-call respectively.
-pub fn list_named_keys() -> BTreeMap<String, Key> {
+pub fn list_named_keys() -> NamedKeys {
     let (total_keys, result_size) = {
         let mut total_keys = MaybeUninit::uninit();
         let mut result_size = 0;
@@ -247,7 +292,7 @@ pub fn list_named_keys() -> BTreeMap<String, Key> {
         (total_keys, result_size)
     };
     if total_keys == 0 {
-        return BTreeMap::new();
+        return NamedKeys::new();
     }
     let bytes = read_host_buffer(result_size).unwrap_or_revert();
     bytesrepr::deserialize(bytes).unwrap_or_revert()

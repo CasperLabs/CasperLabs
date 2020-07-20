@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import com.google.protobuf.ByteString
 import io.casperlabs.storage.BlockHash
 import io.casperlabs.storage.dag.DagRepresentation.Validator
+import io.casperlabs.crypto.Keys.PublicKeyHash
 
 object byteOps {
   implicit class ByteBufferRich(val byteBuffer: ByteBuffer) extends AnyVal {
@@ -13,7 +14,7 @@ object byteOps {
       ByteString.copyFrom(blockHashBytes)
     }
 
-    def getValidator(): Validator = getBlockHash()
+    def getValidator(): Validator = PublicKeyHash(getBlockHash())
   }
 
   implicit class IntRich(val value: Int) extends AnyVal {

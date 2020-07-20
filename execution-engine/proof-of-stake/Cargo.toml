@@ -1,6 +1,6 @@
 [package]
 name = "casperlabs-proof-of-stake"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Henry Till <henrytill@gmail.com>"]
 edition = "2018"
 description = "Defines the proof of stake api"
@@ -11,7 +11,11 @@ license-file = "../../LICENSE"
 
 [features]
 std = ["types/std"]
+no-unstable-features = ["types/no-unstable-features"]
 
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }
-types = { version = "0.5.1", path = "../types", package = "casperlabs-types" }
+types = { version = "0.6.0", path = "../types", package = "casperlabs-types" }
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

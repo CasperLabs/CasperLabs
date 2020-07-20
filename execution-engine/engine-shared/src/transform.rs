@@ -1,6 +1,5 @@
 use std::{
     any,
-    collections::BTreeMap,
     convert::TryFrom,
     default::Default,
     fmt::{self, Display, Formatter},
@@ -11,7 +10,8 @@ use num::traits::{AsPrimitive, WrappingAdd};
 
 use types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, CLValue, CLValueError, Key, U128, U256, U512,
+    contracts::NamedKeys,
+    CLType, CLTyped, CLValue, CLValueError, U128, U256, U512,
 };
 
 use crate::{stored_value::StoredValue, TypeMismatch};
@@ -58,7 +58,7 @@ pub enum Transform {
     AddUInt128(U128),
     AddUInt256(U256),
     AddUInt512(U512),
-    AddKeys(BTreeMap<String, Key>),
+    AddKeys(NamedKeys),
     Failure(Error),
 }
 
@@ -89,7 +89,7 @@ from_try_from_impl!(u64, AddUInt64);
 from_try_from_impl!(U128, AddUInt128);
 from_try_from_impl!(U256, AddUInt256);
 from_try_from_impl!(U512, AddUInt512);
-from_try_from_impl!(BTreeMap<String, Key>, AddKeys);
+from_try_from_impl!(NamedKeys, AddKeys);
 from_try_from_impl!(Error, Failure);
 
 /// Attempts a wrapping addition of `to_add` to `stored_value`, assuming `stored_value` is
@@ -157,6 +157,16 @@ impl Transform {
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());
+                    Err(TypeMismatch::new(expected, found).into())
+                }
+                StoredValue::ContractPackage(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractPackage".to_string();
+                    Err(TypeMismatch::new(expected, found).into())
+                }
+                StoredValue::ContractWasm(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractWasm".to_string();
                     Err(TypeMismatch::new(expected, found).into())
                 }
             },
@@ -299,16 +309,14 @@ pub mod gens {
 mod tests {
     use num::{Bounded, Num};
 
-    use types::{account::PublicKey, AccessRights, ProtocolVersion, URef, U128, U256, U512};
+    use types::{account::AccountHash, AccessRights, ContractWasm, Key, URef, U128, U256, U512};
 
     use super::*;
-    use crate::{
-        account::{Account, ActionThresholds, AssociatedKeys},
-        contract::Contract,
-    };
+    use crate::account::{Account, ActionThresholds, AssociatedKeys};
+    use std::collections::BTreeMap;
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];
-    const ZERO_PUBLIC_KEY: PublicKey = PublicKey::ed25519_from(ZERO_ARRAY);
+    const ZERO_PUBLIC_KEY: AccountHash = AccountHash::new(ZERO_ARRAY);
     const TEST_STR: &str = "a";
     const TEST_BOOL: bool = true;
 
@@ -431,17 +439,13 @@ mod tests {
             };
         }
 
-        let contract = StoredValue::Contract(Contract::new(
-            vec![],
-            BTreeMap::new(),
-            ProtocolVersion::default(),
-        ));
+        let contract = StoredValue::ContractWasm(ContractWasm::new(vec![]));
         assert_yields_type_mismatch_error(contract);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
         let account = StoredValue::Account(Account::new(
             ZERO_PUBLIC_KEY,
-            BTreeMap::new(),
+            NamedKeys::new(),
             uref,
             AssociatedKeys::default(),
             ActionThresholds::default(),
@@ -680,7 +684,7 @@ mod tests {
             ONE_U128,
             add(
                 ZERO_U128,
-                U256::from_dec_str(&MAX_U128.to_string()).unwrap() + 2
+                U256::from_dec_str(&MAX_U128.to_string()).unwrap() + 2,
             )
         );
         assert_eq!(MAX_U128, add(ZERO_U128, MAX_U256));
@@ -691,7 +695,7 @@ mod tests {
             ONE_U128,
             add(
                 ZERO_U128,
-                U512::from_dec_str(&MAX_U128.to_string()).unwrap() + 2
+                U512::from_dec_str(&MAX_U128.to_string()).unwrap() + 2,
             )
         );
         assert_eq!(MAX_U128, add(ZERO_U128, MAX_U512));
@@ -718,7 +722,7 @@ mod tests {
             ONE_U256,
             add(
                 ZERO_U256,
-                U512::from_dec_str(&MAX_U256.to_string()).unwrap() + 2
+                U512::from_dec_str(&MAX_U256.to_string()).unwrap() + 2,
             )
         );
         assert_eq!(MAX_U256, add(ZERO_U256, MAX_U512));

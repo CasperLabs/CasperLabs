@@ -50,9 +50,7 @@ from . import diagnostics_pb2_grpc
 from . import empty_pb2
 
 from . import vdag
-from . import abi
 from casperlabs_client.utils import (
-    bundled_contract,
     extract_common_name,
     key_variant,
     make_deploy,
@@ -410,18 +408,6 @@ class CasperLabsClient:
         )
         self.send_deploy(deploy)
         return deploy.deploy_hash.hex()
-
-    @api
-    def transfer(self, target_account_hex, amount, **deploy_args):
-        target_account_bytes = bytes.fromhex(target_account_hex)
-        deploy_args["session"] = bundled_contract("transfer_to_account_u512.wasm")
-        deploy_args["session_args"] = abi.ABI.args(
-            [
-                abi.ABI.account("account", target_account_bytes),
-                abi.ABI.u512("amount", amount),
-            ]
-        )
-        return self.deploy(**deploy_args)
 
     @api
     def send_deploy(self, deploy):

@@ -13,7 +13,7 @@ import io.casperlabs.casper.consensus.Block.Justification
 import io.casperlabs.casper.consensus.state.ProtocolVersion
 import io.casperlabs.catscontrib.MonadThrowable
 import io.casperlabs.catscontrib.effect.implicits.fiberSyntax
-import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyBS}
+import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyBS, PublicKeyHash, PublicKeyHashBS}
 import io.casperlabs.models.Message
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.storage.BlockHash
@@ -36,7 +36,7 @@ import io.casperlabs.models.Message.{asMainRank, JRank, MainRank}
 import io.casperlabs.shared.Sorting._
 import scala.concurrent.duration._
 import io.casperlabs.casper.consensus.info.DeployInfo
-import io.casperlabs.shared.ByteStringPrettyPrinter.byteStringShow
+import io.casperlabs.crypto.Keys
 
 /** Produce a signed message, persisted message.
   * The producer should the thread safe, so that when it's
@@ -44,14 +44,14 @@ import io.casperlabs.shared.ByteStringPrettyPrinter.byteStringShow
   * to different messages it doesn't create an equivocation.
   */
 trait MessageProducer[F[_]] {
-  def validatorId: PublicKeyBS
+  def validatorId: PublicKeyHashBS
 
   def ballot(
       keyBlockHash: BlockHash,
       roundId: Ticks,
       target: Message.Block,
       // For lambda responses we want to limit the justifications to just direct ones.
-      justifications: Map[PublicKeyBS, Set[Message]],
+      justifications: Map[PublicKeyHashBS, Set[Message]],
       messageRole: Block.MessageRole
   ): F[Message.Ballot]
 
@@ -64,7 +64,7 @@ trait MessageProducer[F[_]] {
       keyBlockHash: BlockHash,
       roundId: Ticks,
       mainParent: Message.Block,
-      justifications: Map[PublicKeyBS, Set[Message]],
+      justifications: Map[PublicKeyHashBS, Set[Message]],
       isBookingBlock: Boolean,
       messageRole: Block.MessageRole
   ): F[Message.Block]
@@ -74,6 +74,8 @@ trait MessageProducer[F[_]] {
 }
 
 object MessageProducer {
+  import DagRepresentation.Validator
+
   def apply[F[_]: Concurrent: Clock: Log: Metrics: DagStorage: BlockStorage: DeployBuffer: DeployStorage: EraStorage: CasperLabsProtocol: ExecutionEngineService: DeploySelection](
       validatorIdentity: ValidatorIdentity,
       chainName: String,
@@ -82,8 +84,7 @@ object MessageProducer {
       maxBlockCost: Long = 0
   ): MessageProducer[F] =
     new MessageProducer[F] {
-      override val validatorId =
-        PublicKey(ByteString.copyFrom(validatorIdentity.publicKey))
+      override val validatorId = validatorIdentity.publicKeyHashBS
 
       override def hasPendingDeploys: F[Boolean] =
         DeployStorage[F].reader.countByBufferedState(DeployInfo.State.PENDING).map(_ > 0)
@@ -92,7 +93,7 @@ object MessageProducer {
           keyBlockHash: BlockHash,
           roundId: Ticks,
           target: Message.Block,
-          justifications: Map[PublicKeyBS, Set[Message]],
+          justifications: Map[Validator, Set[Message]],
           messageRole: Block.MessageRole
       ): F[Message.Ballot] =
         for {
@@ -111,9 +112,7 @@ object MessageProducer {
             timestamp,
             props.jRank,
             props.mainRank,
-            validatorIdentity.publicKey,
-            validatorIdentity.privateKey,
-            validatorIdentity.signatureAlgorithm,
+            validatorIdentity,
             keyBlockHash,
             roundId,
             messageRole
@@ -129,7 +128,7 @@ object MessageProducer {
           keyBlockHash: BlockHash,
           roundId: Ticks,
           mainParent: Message.Block,
-          justifications: Map[PublicKeyBS, Set[Message]],
+          justifications: Map[Validator, Set[Message]],
           isBookingBlock: Boolean,
           messageRole: Block.MessageRole
       ): F[Message.Block] =
@@ -184,9 +183,7 @@ object MessageProducer {
             timestamp,
             props.jRank,
             props.mainRank,
-            validatorIdentity.publicKey,
-            validatorIdentity.privateKey,
-            validatorIdentity.signatureAlgorithm,
+            validatorIdentity,
             keyBlockHash,
             roundId,
             magicBit,
@@ -202,7 +199,7 @@ object MessageProducer {
       private def messageProps(
           keyBlockHash: BlockHash,
           parents: Seq[Message],
-          justifications: Map[PublicKeyBS, Set[Message]]
+          justifications: Map[PublicKeyHashBS, Set[Message]]
       ): F[MessageProps] = {
         // NCB used to filter justifications to be only the bonded ones.
         // In Highway, we must include the justifications of the parent era _when_ there's a
@@ -274,7 +271,7 @@ object MessageProducer {
       dag: DagRepresentation[F],
       keyBlockHash: BlockHash,
       mainParent: Message.Block,
-      justifications: Map[PublicKeyBS, Set[Message]]
+      justifications: Map[Validator, Set[Message]]
   ): F[MergeResult[TransformMap, Block]] = {
     // TODO (CON-627): The merge doesn't deal with ballots that are cast in response to protocol
     // messages such as the switch block or lambda message. It wouldn't properly return all possible
@@ -290,7 +287,9 @@ object MessageProducer {
         equivocators <- collectEquivocators[F](keyBlockHash)
         // TODO: There are no scores here for ordering secondary parents. Another reason for the fork choice to give these.
         secondaries = tips
-          .filterNot(m => equivocators(m.validatorId) || m.messageHash == mainParent.messageHash)
+          .filterNot(
+            m => equivocators(m.validatorId) || m.messageHash == mainParent.messageHash
+          )
           .sortBy(_.messageHash)
       } yield secondaries
     }
@@ -308,7 +307,7 @@ object MessageProducer {
     */
   def collectEquivocators[F[_]: MonadThrowable: EraStorage: DagStorage](
       keyBlockHash: BlockHash
-  ): F[Set[ByteString]] =
+  ): F[Set[Validator]] =
     for {
       dag               <- DagStorage[F].getRepresentation
       keyBlocks         <- collectKeyBlocks[F](keyBlockHash)

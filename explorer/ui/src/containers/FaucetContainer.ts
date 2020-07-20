@@ -4,8 +4,9 @@ import ErrorContainer from './ErrorContainer';
 import StorageCell from '../lib/StorageCell';
 import FaucetService from '../services/FaucetService';
 import { DeployInfo } from 'casperlabs-grpc/io/casperlabs/casper/consensus/info_pb';
-import { GrpcError, CasperService } from 'casperlabs-sdk';
+import { GrpcError, CasperService} from 'casperlabs-sdk';
 import { grpc } from '@improbable-eng/grpc-web';
+import { getPublicKeyHashBase64 } from './AuthContainer';
 
 export class FaucetContainer {
   private _faucetRequests = new StorageCell<FaucetRequest[]>(
@@ -29,7 +30,7 @@ export class FaucetContainer {
   async requestTokens(account: UserAccount) {
     const request = async () => {
       const deployHash = await this.faucetService.requestTokens(
-        account.publicKeyBase64
+        getPublicKeyHashBase64(account)
       );
       this.monitorFaucetRequest(account, deployHash);
     };
@@ -82,7 +83,8 @@ export class FaucetContainer {
       this.onFaucetStatusChange();
     }
     if (!anyNeededUpdate) {
-      window.clearTimeout(this.faucetStatusTimerId);
+      window.clearInterval(this.faucetStatusTimerId);
+      this.faucetStatusTimerId = 0;
     }
   }
 

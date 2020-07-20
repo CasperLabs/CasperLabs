@@ -6,22 +6,28 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::PublicKey, Key, U512};
+use types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
 
 const CONTRACT_CREATE: &str = "ee_572_regression_create.wasm";
 const CONTRACT_ESCALATE: &str = "ee_572_regression_escalate.wasm";
 const CONTRACT_TRANSFER: &str = "transfer_purse_to_account.wasm";
 const CREATE: &str = "create";
 
-const ACCOUNT_1_ADDR: PublicKey = PublicKey::ed25519_from([1u8; 32]);
-const ACCOUNT_2_ADDR: PublicKey = PublicKey::ed25519_from([2u8; 32]);
+const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
+const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
 
 #[ignore]
 #[test]
 fn should_run_ee_572_regression() {
     let account_amount: U512 = *DEFAULT_PAYMENT + U512::from(100);
-    let account_1_creation_args = (ACCOUNT_1_ADDR, account_amount);
-    let account_2_creation_args = (ACCOUNT_2_ADDR, account_amount);
+    let account_1_creation_args = runtime_args! {
+        "target" => ACCOUNT_1_ADDR,
+        "amount" => account_amount
+    };
+    let account_2_creation_args = runtime_args! {
+        "target" => ACCOUNT_2_ADDR,
+        "amount" => account_amount,
+    };
 
     // This test runs a contract that's after every call extends the same key with
     // more data
@@ -36,7 +42,7 @@ fn should_run_ee_572_regression() {
     let exec_request_2 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER,
-        account_2_creation_args,
+        account_2_creation_args.clone(),
     )
     .build();
 
@@ -49,10 +55,9 @@ fn should_run_ee_572_regression() {
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request_1)
         .expect_success()
-        .commit()
-        .exec(exec_request_2)
-        .expect_success()
         .commit();
+
+    builder.exec(exec_request_2).expect_success().commit();
 
     // Store the creation contract
     builder.exec(exec_request_3).expect_success().commit();
@@ -68,8 +73,14 @@ fn should_run_ee_572_regression() {
             .expect("Could not find contract pointer")
     };
 
-    let exec_request_4 =
-        ExecuteRequestBuilder::standard(ACCOUNT_2_ADDR, CONTRACT_ESCALATE, (contract,)).build();
+    let exec_request_4 = ExecuteRequestBuilder::standard(
+        ACCOUNT_2_ADDR,
+        CONTRACT_ESCALATE,
+        runtime_args! {
+            "contract_hash" => contract.into_hash().expect("should be hash"),
+        },
+    )
+    .build();
 
     // Attempt to forge a new URef with escalated privileges
     let response = builder
@@ -80,5 +91,5 @@ fn should_run_ee_572_regression() {
 
     let error_message = utils::get_error_message(response);
 
-    assert!(error_message.contains("ForgedReference"));
+    assert!(error_message.contains("ForgedReference"), error_message);
 }

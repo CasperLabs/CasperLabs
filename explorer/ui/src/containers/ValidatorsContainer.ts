@@ -1,7 +1,10 @@
 import ErrorContainer from './ErrorContainer';
 import { CasperService } from 'casperlabs-sdk';
 import { action, computed, observable } from 'mobx';
-import { BlockInfo, Event } from 'casperlabs-grpc/io/casperlabs/casper/consensus/info_pb';
+import {
+  BlockInfo,
+  Event
+} from 'casperlabs-grpc/io/casperlabs/casper/consensus/info_pb';
 import { Block } from 'casperlabs-grpc/io/casperlabs/casper/consensus/consensus_pb';
 import { ToggleableSubscriber } from './ToggleableSubscriber';
 
@@ -62,7 +65,14 @@ export class ValidatorsContainer {
     if (!this.latestFinalizedBlock) {
       return new Set<ValidatorIdBase64>();
     } else {
-      return new Set(this.latestFinalizedBlock.getSummary()!.getHeader()!.getState()!.getBondsList()!.map(b => b.getValidatorPublicKey_asB64()));
+      return new Set(
+        this.latestFinalizedBlock
+          .getSummary()!
+          .getHeader()!
+          .getState()!
+          .getBondsList()!
+          .map(b => b.getValidatorPublicKeyHash_asB64())
+      );
     }
   }
 
@@ -71,7 +81,7 @@ export class ValidatorsContainer {
   private async upsert(blockInfos: BlockInfo[]) {
     blockInfos.forEach(b => {
       const header = b.getSummary()!.getHeader()!;
-      let validatorId = header.getValidatorPublicKey_asB64();
+      let validatorId = header.getValidatorPublicKeyHash_asB64();
       let item = this.validatorInfoMaps.get(validatorId);
       if (!item || item.rank < header.getJRank()) {
         this.validatorInfoMaps.set(validatorId, {
@@ -104,7 +114,7 @@ export class ValidatorsContainer {
     let justifications: Array<Block.Justification> = this.latestFinalizedBlock?.getSummary()?.getHeader()?.getJustificationsList() ?? new Array<Block.Justification>();
     let promises = justifications.filter(j => {
       // only request BlockInfo for those validators who has bonded but still don't have any info
-      let vId = j.getValidatorPublicKey_asB64();
+      let vId = j.getValidatorPublicKeyHash_asB64();
       return bondedValidators.has(vId) && !this.validatorInfoMaps.has(vId);
     }).map(j => {
       return this.casperService.getBlockInfo(j.getLatestBlockHash());

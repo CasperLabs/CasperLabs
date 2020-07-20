@@ -20,12 +20,13 @@ const STANDARD_PAYMENT_INSTALL: &str = "standard_payment_install.wasm";
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
     use casperlabs_engine_test_support::{Code, Error, SessionBuilder, TestContextBuilder, Value};
-    use casperlabs_types::{account::PublicKey, U512};
+    use casperlabs_types::{account::AccountHash, U512, RuntimeArgs, runtime_args};
 
-    const MY_ACCOUNT: PublicKey = PublicKey::ed25519_from([7u8; 32]);
+    const MY_ACCOUNT: AccountHash = AccountHash::new([7u8; 32]);
     // define KEY constant to match that in the contract
     const KEY: &str = "special_value";
     const VALUE: &str = "hello world";
+    const ARG_MESSAGE: &str = "message";
 
     #[test]
     fn should_store_hello_world() {
@@ -37,7 +38,9 @@ mod tests {
         // relative to the current working dir (e.g. 'wasm/contract.wasm') can also be used, as can
         // absolute paths.
         let session_code = Code::from("contract.wasm");
-        let session_args = (VALUE,);
+        let session_args = runtime_args! {
+            ARG_MESSAGE => VALUE,
+        };
         let session = SessionBuilder::new(session_code, session_args)
             .with_address(MY_ACCOUNT)
             .with_authorization_keys(&[MY_ACCOUNT])
@@ -105,7 +108,7 @@ lazy_static! {
         .join("src/integration_tests.rs");
     static ref ENGINE_TEST_SUPPORT: Dependency = Dependency::new(
         "casperlabs-engine-test-support",
-        "0.7.1",
+        "0.8.0",
         "engine-test-support"
     );
     static ref CARGO_TOML_ADDITIONAL_CONTENTS: String = format!(

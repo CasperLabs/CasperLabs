@@ -33,7 +33,6 @@ export class BlockContainer {
   init(blockHash: ByteArray) {
     this.blockHash = blockHash;
     this.block = null;
-    this.neighborhood = null;
     this.deploys = null;
     this.balances.clear();
   }
@@ -97,7 +96,7 @@ export class BlockContainer {
       const accountKey = deploy
         .getDeploy()!
         .getHeader()!
-        .getAccountPublicKey_asU8();
+        .getAccountPublicKeyHash_asU8();
       const accountB16 = encodeBase16(accountKey);
       const balance = await this.balanceService.getAccountBalance(
         this.blockHash,

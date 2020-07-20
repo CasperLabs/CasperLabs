@@ -196,7 +196,7 @@ fn in_memory_uncommitted_read_write_txn_does_not_persist() {
     assert_eq!(
         None,
         uncommitted_read_write_txn_does_not_persist::<_, _, _, _, in_memory::Error>(
-            &store, &env, &data
+            &store, &env, &data,
         )
         .expect("uncommitted_read_write_txn_does_not_persist failed")
         .into_iter()
@@ -214,7 +214,7 @@ fn lmdb_uncommitted_read_write_txn_does_not_persist() {
     assert_eq!(
         None,
         uncommitted_read_write_txn_does_not_persist::<_, _, _, _, error::Error>(
-            &store, &env, &data
+            &store, &env, &data,
         )
         .expect("uncommitted_read_write_txn_does_not_persist failed")
         .into_iter()
@@ -468,7 +468,7 @@ fn in_memory_transactions_can_be_used_across_sub_databases() {
 
     assert!(
         transactions_can_be_used_across_sub_databases::<_, _, in_memory::Error>(
-            &env, &store_a, &store_b
+            &env, &store_a, &store_b,
         )
         .is_ok()
     );
@@ -483,7 +483,7 @@ fn lmdb_transactions_can_be_used_across_sub_databases() {
 
     assert!(
         transactions_can_be_used_across_sub_databases::<_, _, error::Error>(
-            &env, &store_a, &store_b
+            &env, &store_a, &store_b,
         )
         .is_ok()
     )
@@ -530,7 +530,7 @@ fn in_memory_uncommitted_transactions_across_sub_databases_do_not_persist() {
 
     assert!(
         uncommitted_transactions_across_sub_databases_do_not_persist::<_, _, in_memory::Error>(
-            &env, &store_a, &store_b
+            &env, &store_a, &store_b,
         )
         .is_ok()
     );
@@ -545,7 +545,7 @@ fn lmdb_uncommitted_transactions_across_sub_databases_do_not_persist() {
 
     assert!(
         uncommitted_transactions_across_sub_databases_do_not_persist::<_, _, error::Error>(
-            &env, &store_a, &store_b
+            &env, &store_a, &store_b,
         )
         .is_ok()
     )

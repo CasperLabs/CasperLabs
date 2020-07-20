@@ -6,9 +6,12 @@ mod big_int;
 mod cl_type;
 mod cl_value;
 mod contract;
+mod contract_package;
+mod contract_wasm;
 mod key;
 mod named_key;
 mod protocol_version;
+mod semver;
 mod stored_value;
 mod uref;
 

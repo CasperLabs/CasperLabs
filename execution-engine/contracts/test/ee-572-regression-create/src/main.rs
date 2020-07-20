@@ -7,10 +7,14 @@ use contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{AccessRights, CLValue, Key, URef};
+use types::{
+    contracts::Parameters, AccessRights, CLType, CLValue, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, URef,
+};
 
 const DATA: &str = "data";
 const CONTRACT_NAME: &str = "create";
+const CONTRACT_VERSION: &str = "contract_version";
 
 #[no_mangle]
 pub extern "C" fn create() {
@@ -22,6 +26,22 @@ pub extern "C" fn create() {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract: Key = storage::store_function_at_hash(CONTRACT_NAME, Default::default()).into();
-    runtime::put_key(CONTRACT_NAME, contract)
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
+
+        let entry_point = EntryPoint::new(
+            "create",
+            Parameters::default(),
+            CLType::URef,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
+        entry_points.add_entry_point(entry_point);
+
+        entry_points
+    };
+    let (contract_hash, contract_version) = storage::new_contract(entry_points, None, None, None);
+    runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
+    runtime::put_key(CONTRACT_NAME, contract_hash.into());
 }

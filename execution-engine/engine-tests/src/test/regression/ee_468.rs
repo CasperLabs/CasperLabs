@@ -2,6 +2,7 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
+use types::RuntimeArgs;
 
 const CONTRACT_DESERIALIZE_ERROR: &str = "deserialize_error.wasm";
 
@@ -11,7 +12,7 @@ fn should_not_fail_deserializing() {
     let exec_request = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_DESERIALIZE_ERROR,
-        (DEFAULT_ACCOUNT_ADDR,),
+        RuntimeArgs::new(),
     )
     .build();
     let is_error = InMemoryWasmTestBuilder::default()

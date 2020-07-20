@@ -1,4 +1,4 @@
-import {toBytesArrayU8, toBytesString, toBytesI32, toBytesStringList, toBytesU64} from "./bytesrepr";
+import {toBytesArrayU8, toBytesString, toBytesI32, toBytesU32, toBytesStringList, toBytesU64} from "./bytesrepr";
 import {U512} from "./bignum";
 import {URef} from "./uref";
 import {Key} from "./key";
@@ -58,6 +58,40 @@ export enum CLTypeTag {
     Any = 21,
 }
 
+export class CLType {
+    tag: CLTypeTag;
+    bytes: Array<u8>;
+
+    constructor(tag: CLTypeTag, extra: Array<u8> | null = null) {
+        this.tag = tag;
+        this.bytes = [<u8>tag];
+        if (extra !== null) {
+            this.bytes = this.bytes.concat(<Array<u8>>extra);
+        }
+    }
+
+    static fixedList(typeTag: CLType, size: u32): CLType {
+        let extra = typeTag.bytes;
+        extra = extra.concat(toBytesU32(size));
+
+        let clType = new CLType(CLTypeTag.Fixed_list, extra);
+        
+        return clType;
+    }
+
+    static list(typeTag: CLType): CLType {
+        return new CLType(CLTypeTag.List, typeTag.bytes);
+    }
+    
+    static option(typeTag: CLType): CLType {
+        return new CLType(CLTypeTag.Option, typeTag.bytes);
+    }
+
+    toBytes(): u8[] {
+        return this.bytes;
+    }
+};
+
 /**
  * A CasperLabs value, i.e. a value which can be stored and manipulated by smart contracts.
  *
@@ -66,76 +100,70 @@ export enum CLTypeTag {
  */
 export class CLValue {
     bytes: u8[];
-    tag: u8[];
+    clType: CLType;
 
     /**
-     * Constructs a new `CLValue` with given underlying data and type tag.
+     * Constructs a new `CLValue` with given underlying data and type.
      */
-    constructor(bytes: u8[], tag: u8[]) {
+    constructor(bytes: u8[], clType: CLType) {
         this.bytes = bytes;
-        this.tag = tag;
+        this.clType = clType;
     }
 
     /**
      * Creates a `CLValue` holding a string.
      */
     static fromString(s: String): CLValue {
-        return new CLValue(toBytesString(s), [<u8>CLTypeTag.String]);
+        return new CLValue(toBytesString(s), new CLType(CLTypeTag.String));
     }
 
     /**
      * Creates a `CLValue` holding an unsigned 512-bit integer.
      */
     static fromU512(value: U512): CLValue {
-        return new CLValue(value.toBytes(), [<u8>CLTypeTag.U512]);
+        return new CLValue(value.toBytes(), new CLType(CLTypeTag.U512));
     }
 
     /**
      * Creates a `CLValue` holding a signed 32-bit integer.
      */
     static fromI32(value: i32): CLValue {
-        return new CLValue(toBytesI32(value), [<u8>CLTypeTag.I32]);
+        return new CLValue(toBytesI32(value), new CLType(CLTypeTag.I32));
     }
 
     /**
      * Creates a `CLValue` holding an unsigned 64-bit integer.
      */
     static fromU64(value: u64): CLValue {
-        return new CLValue(toBytesU64(value), [<u8>CLTypeTag.U64]);
+        return new CLValue(toBytesU64(value), new CLType(CLTypeTag.U64));
     }
 
     /**
      * Creates a `CLValue` holding a [[Key]].
      */
     static fromKey(key: Key): CLValue{
-        return new CLValue(key.toBytes(), [<u8>CLTypeTag.Key]);
+        return new CLValue(key.toBytes(), new CLType(CLTypeTag.Key));
     }
 
     /**
      * Creates a `CLValue` holding a [[URef]].
      */
     static fromURef(uref: URef): CLValue {
-        return new CLValue(uref.toBytes(), [<u8>CLTypeTag.Uref]);
+        return new CLValue(uref.toBytes(), new CLType(CLTypeTag.Uref));
     }
 
     /**
      * Creates a `CLValue` holding a list of strings.
      */
     static fromStringList(values: String[]): CLValue {
-        return new CLValue(toBytesStringList(values), [
-            <u8>CLTypeTag.List,
-            <u8>CLTypeTag.String,
-        ]);
+        return new CLValue(toBytesStringList(values), CLType.list(new CLType(CLTypeTag.String)));
     }
 
     /**
      * Creates a `CLValue` holding an [[Option]].
      */
-    static fromOption(value: Option, nestedT: CLTypeTag): CLValue {
-        return new CLValue(value.toBytes(), [
-            <u8>CLTypeTag.Option,
-            <u8>nestedT,
-        ]);
+    static fromOption(value: Option, nestedT: CLType): CLValue {
+        return new CLValue(value.toBytes(), CLType.option(nestedT));
     }
 
     /**
@@ -143,9 +171,7 @@ export class CLValue {
      */
     toBytes(): u8[] {
         let data = toBytesArrayU8(this.bytes);
-        for (let i = 0; i < this.tag.length; i++) {
-            data.push(this.tag[i]);
-        }
+        data = data.concat(this.clType.bytes);
         return data;
     }
 }

@@ -96,24 +96,12 @@ package object types {
     )
   )
 
-  lazy val KeyLocal = ObjectType(
-    "KeyLocal",
-    fields[Unit, cltype.Key.Local](
-      Field(
-        "hash",
-        StringType,
-        resolve = c => Base16.encode((c.value.seed.bytes ++ c.value.hash.bytes).toArray)
-      )
-    )
-  )
-
   lazy val KeyUnion = UnionType(
     "KeyUnion",
     types = List(
       KeyAddress,
       KeyHash,
-      KeyURef,
-      KeyLocal
+      KeyURef
     )
   )
 
@@ -124,7 +112,6 @@ package object types {
         "value",
         KeyUnion,
         resolve = _.value.value match {
-          case value: cltype.Key.Local   => value
           case value: cltype.Key.Hash    => value
           case value: cltype.Key.Account => value
           case value: cltype.Key.URef    => value
@@ -141,16 +128,124 @@ package object types {
     )
   )
 
+  lazy val Parameter = ObjectType(
+    "Parameter",
+    fields[Unit, (String, cltype.CLType)](
+      Field("name", StringType, resolve = _.value._1),
+      Field("cl_type", StringType, resolve = _.value._2.toString())
+    )
+  )
+
+  lazy val AccessPublic = ObjectType(
+    "AccessPublic",
+    fields[Unit, cltype.EntryPointAccess.Public](
+      Field("value", StringType, resolve = _ => "Public")
+    )
+  )
+
+  lazy val AccessGroups = ObjectType(
+    "AccessGroups",
+    fields[Unit, cltype.EntryPointAccess.Groups](
+      Field("labels", ListType(StringType), resolve = _.value.labels.toList)
+    )
+  )
+
+  lazy val AccessUnion: UnionType[Unit] = UnionType(
+    "EntryPointAccessUnion",
+    types = List(
+      AccessPublic,
+      AccessGroups
+    )
+  )
+  lazy val EntryPoint = ObjectType(
+    "EntryPoint",
+    fields[Unit, cltype.EntryPoint](
+      Field("name", StringType, resolve = _.value.name),
+      Field("parameters", ListType(Parameter), resolve = _.value.parameters.toList),
+      Field("ret", StringType, resolve = _.value.ret.toString()),
+      Field("access", AccessUnion, resolve = _.value.access),
+      Field("entryPointType", StringType, resolve = _.value.entryPointType.toString())
+    )
+  )
+
   lazy val Contract = ObjectType(
     "Contract",
     fields[Unit, cltype.Contract](
-      Field("body", StringType, resolve = c => Base16.encode(c.value.bytes.toArray)),
+      Field(
+        "contractPackageHash",
+        StringType,
+        resolve = c => Base16.encode(c.value.contractPackageHash.bytes.toArray)
+      ),
+      Field(
+        "contractWasmHash",
+        StringType,
+        resolve = c => Base16.encode(c.value.contractWasmHash.bytes.toArray)
+      ),
       Field("namedKeys", ListType(NamedKey), resolve = _.value.namedKeys.toList),
+      Field("entryPoints", ListType(EntryPoint), resolve = _.value.entryPoints.map {
+        case (k @ _, v) => v
+      }.toList),
       Field(
         "protocolVersion",
         ProtocolVersionType,
         resolve = c => cltype.protobuf.Mappings.toProto(c.value.protocolVersion)
       )
+    )
+  )
+
+  lazy val ContractVersionKey = ObjectType(
+    "ContractVersionKey",
+    fields[Unit, Tuple2[Int, Int]](
+      Field("protocolMajorVersion", IntType, resolve = _.value._1),
+      Field("contractVersion", IntType, resolve = _.value._2)
+    )
+  )
+
+  lazy val ActiveVersion = ObjectType(
+    "ActiveVersion",
+    fields[Unit, (Tuple2[Int, Int], cltype.ByteArray32)](
+      Field("key", ContractVersionKey, resolve = _.value._1),
+      Field("value", StringType, resolve = c => Base16.encode(c.value._2.bytes.toArray))
+    )
+  )
+
+  lazy val Group = ObjectType(
+    "Group",
+    fields[Unit, (String, Set[cltype.URef])](
+      Field("key", StringType, resolve = _.value._1),
+      Field(
+        "value",
+        ListType(KeyURef),
+        resolve = c =>
+          c.value._2.map { x =>
+            cltype.Key.URef(x)
+          }.toList
+      )
+    )
+  )
+
+  lazy val ContractPackage = ObjectType(
+    "ContractPackage",
+    fields[Unit, cltype.ContractPackage](
+      Field("mainPurse", KeyURef, resolve = c => cltype.Key.URef(c.value.accessURef)),
+      Field(
+        "versions",
+        ListType(ActiveVersion),
+        resolve = _.value.versions.toList
+      ),
+      Field(
+        "disabledVersions",
+        ListType(ContractVersionKey),
+        resolve = _.value.disabledVersions.toList
+      ),
+      Field("groups", ListType(Group), resolve = _.value.groups.toList)
+    )
+  )
+
+  lazy val ContractWasm = ObjectType(
+    "ContractWasm",
+    fields[Unit, cltype.ContractWasm](
+      Field("body", StringType, resolve = c => Base16.encode(c.value.bytes.toArray))
     )
   )
 
@@ -391,6 +486,8 @@ package object types {
     types = List(
       Account,
       Contract,
+      ContractPackage,
+      ContractWasm,
       Bool,
       I32,
       I64,
@@ -422,8 +519,10 @@ package object types {
         "value",
         StoredValueUnion,
         resolve = _.value match {
-          case cltype.StoredValueInstance.Contract(value) => value
-          case cltype.StoredValueInstance.Account(value)  => value
+          case cltype.StoredValueInstance.Contract(value)        => value
+          case cltype.StoredValueInstance.ContractWasm(value)    => value
+          case cltype.StoredValueInstance.ContractPackage(value) => value
+          case cltype.StoredValueInstance.Account(value)         => value
           case cltype.StoredValueInstance.CLValue(value) =>
             value match {
               case v: CLValueInstance.Bool      => v

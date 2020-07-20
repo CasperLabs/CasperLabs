@@ -5,7 +5,7 @@ use contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, URef, U512};
+use types::{ApiError, RuntimeArgs, URef, U512};
 
 #[repr(u16)]
 enum Error {
@@ -15,16 +15,22 @@ enum Error {
     CheckBalance,
 }
 
+const ARG_AMOUNT: &str = "amount";
+const ENTRY_POINT_GET_PAYMENT_PURSE: &str = "get_payment_purse";
+
 #[no_mangle]
 pub extern "C" fn call() {
-    let pos_pointer = system::get_proof_of_stake();
+    // amount passed to payment contract
+    let payment_fund: U512 = runtime::get_named_arg(ARG_AMOUNT);
+
+    let contract_hash = system::get_proof_of_stake();
     let source_purse = account::get_main_purse();
     let payment_amount: U512 = 100.into();
-    // amount passed to payment contract
-    let payment_fund: U512 = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let payment_purse: URef = runtime::call_contract(pos_pointer, ("get_payment_purse",));
+    let payment_purse: URef = runtime::call_contract(
+        contract_hash,
+        ENTRY_POINT_GET_PAYMENT_PURSE,
+        RuntimeArgs::default(),
+    );
 
     // can deposit
     system::transfer_from_purse_to_purse(source_purse, payment_purse, payment_amount)

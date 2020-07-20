@@ -2,19 +2,20 @@
 #![no_main]
 
 use contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use types::{ApiError, ContractRef, Key};
+use types::{contracts::DEFAULT_ENTRY_POINT_NAME, ApiError, RuntimeArgs};
 
 const REVERT_TEST_KEY: &str = "revert_test";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let revert_test_uref =
-        runtime::get_key(REVERT_TEST_KEY).unwrap_or_revert_with(ApiError::GetKey);
+    let contract_hash = runtime::get_key(REVERT_TEST_KEY)
+        .unwrap_or_revert_with(ApiError::GetKey)
+        .into_hash()
+        .unwrap_or_revert();
 
-    let contract_ref = match revert_test_uref {
-        Key::Hash(hash) => ContractRef::Hash(hash),
-        _ => runtime::revert(ApiError::UnexpectedKeyVariant),
-    };
-
-    runtime::call_contract(contract_ref, ())
+    runtime::call_contract(
+        contract_hash,
+        DEFAULT_ENTRY_POINT_NAME,
+        RuntimeArgs::default(),
+    )
 }

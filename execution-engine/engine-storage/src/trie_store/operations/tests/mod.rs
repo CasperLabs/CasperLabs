@@ -1,4 +1,3 @@
-mod ee_699;
 mod keys;
 mod proptests;
 mod read;
@@ -663,7 +662,7 @@ where
         &txn,
         store,
         root,
-        present
+        present,
     )?);
 
     txn.commit()?;

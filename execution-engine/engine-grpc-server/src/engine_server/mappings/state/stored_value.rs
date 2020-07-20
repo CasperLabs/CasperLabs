@@ -1,11 +1,10 @@
-use std::convert::{TryFrom, TryInto};
-
 use engine_shared::stored_value::StoredValue;
 
 use crate::engine_server::{
     mappings::ParsingError,
     state::{self, StoredValue_oneof_variants},
 };
+use std::convert::{TryFrom, TryInto};
 
 impl From<StoredValue> for state::StoredValue {
     fn from(value: StoredValue) -> Self {
@@ -14,7 +13,15 @@ impl From<StoredValue> for state::StoredValue {
         match value {
             StoredValue::CLValue(cl_value) => pb_value.set_cl_value(cl_value.into()),
             StoredValue::Account(account) => pb_value.set_account(account.into()),
-            StoredValue::Contract(contract) => pb_value.set_contract(contract.into()),
+            StoredValue::Contract(contract) => {
+                pb_value.set_contract(contract.into());
+            }
+            StoredValue::ContractWasm(contract_wasm) => {
+                pb_value.set_contract_wasm(contract_wasm.into())
+            }
+            StoredValue::ContractPackage(contract_package) => {
+                pb_value.set_contract_package(contract_package.into())
+            }
         }
 
         pb_value
@@ -38,6 +45,12 @@ impl TryFrom<state::StoredValue> for StoredValue {
             }
             StoredValue_oneof_variants::contract(pb_contract) => {
                 StoredValue::Contract(pb_contract.try_into()?)
+            }
+            StoredValue_oneof_variants::contract_package(pb_contract_package) => {
+                StoredValue::ContractPackage(pb_contract_package.try_into()?)
+            }
+            StoredValue_oneof_variants::contract_wasm(pb_contract_wasm) => {
+                StoredValue::ContractWasm(pb_contract_wasm.into())
             }
         };
 

@@ -37,7 +37,7 @@ import io.casperlabs.casper._
 import io.casperlabs.catscontrib.MonadThrowable
 import io.casperlabs.comm.ServiceError.{NotFound, Unavailable}
 import io.casperlabs.comm.gossiping.relaying.BlockRelaying
-import io.casperlabs.crypto.Keys.PublicKey
+import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyHash}
 import io.casperlabs.ipc.ChainSpec
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.mempool.DeployBuffer
@@ -129,7 +129,7 @@ object NCB {
                 state <- Cell.mvarCell[F, CasperState](CasperState())
                 executor <- MultiParentCasperImpl.StatelessExecutor
                              .create[F](
-                               maybeValidatorId.map(_.publicKey),
+                               maybeValidatorId.map(_.publicKeyHashBS),
                                chainName = chainSpec.getGenesis.name,
                                chainSpec.upgrades
                              )
@@ -216,7 +216,9 @@ object NCB {
           lfbMessage     <- dag.lookupUnsafe(lfb)
           // Take only validators who were bonded in the LFB to make sure unbonded
           // validators don't cause syncing to always start from the rank they left at.
-          bonded = lfbMessage.blockSummary.getHeader.getState.bonds.map(_.validatorPublicKey).toSet
+          bonded = lfbMessage.blockSummary.getHeader.getState.bonds
+            .map(b => PublicKeyHash(b.validatorPublicKeyHash))
+            .toSet
           // The minimum rank of all latest messages is not exactly
           minRank = latestMessages
             .filterKeys(bonded)
@@ -333,8 +335,7 @@ object Highway {
                        chainName = chainSpec.getGenesis.name,
                        genesis = genesis,
                        upgrades = chainSpec.upgrades,
-                       maybeValidatorId =
-                         maybeValidatorId.map(v => PublicKey(ByteString.copyFrom(v.publicKey)))
+                       maybeValidatorId = maybeValidatorId.map(_.publicKeyHashBS)
                      ),
                      initRoundExponent = conf.highway.initRoundExponent.value,
                      isSynced = isSyncedRef.get

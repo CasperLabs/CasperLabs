@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import os
 import re
@@ -5,6 +6,8 @@ import random
 import string
 import tempfile
 from pathlib import Path
+
+from casperlabs_client.crypto import blake2b_hash
 
 from .errors import (
     UnexpectedProposeOutputFormatError,
@@ -118,3 +121,11 @@ def extract_deploy_hash_from_deploy_output(deploy_output: str) -> str:
     if match is None:
         raise UnexpectedProposeOutputFormatError(deploy_output)
     return match.group(1)
+
+
+def public_key_hash_hex(public_key_base64: str) -> str:
+    alg = b"ED25519"
+    bytes = bytearray(alg)
+    bytes.extend([0])
+    bytes.extend(base64.b64decode(public_key_base64))
+    return blake2b_hash(bytes).hex()

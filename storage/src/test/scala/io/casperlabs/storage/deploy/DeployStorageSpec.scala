@@ -5,13 +5,13 @@ import com.google.protobuf.ByteString
 import io.casperlabs.casper.consensus.{Block, Deploy}
 import io.casperlabs.casper.consensus.info.DeployInfo
 import io.casperlabs.crypto.codec.Base16
+import io.casperlabs.crypto.Keys.{PublicKeyHash, PublicKeyHashBS}
 import io.casperlabs.models.ArbitraryConsensus
 import monix.eval.Task
 import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.Arbitrary.arbBool
 import org.scalatest._
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
-import io.casperlabs.crypto.Keys.PublicKey
 import io.casperlabs.shared.Sorting.byteStringOrdering
 
 import scala.concurrent.duration._
@@ -204,7 +204,7 @@ trait DeployStorageSpec
         val discarded = sample(arbDeploy.arbitrary)
         val wrongAccount =
           processed
-            .withHeader(processed.getHeader.withAccountPublicKey(sample(genHash)))
+            .withHeader(processed.getHeader.withAccountPublicKeyHash(sample(genHash)))
             .withDeployHash(sample(genHash))
         for {
           //given
@@ -213,7 +213,9 @@ trait DeployStorageSpec
           _ <- writer.addAsDiscarded(discarded)
           _ <- writer.addAsFinalized(finalized)
           //when
-          p <- reader.readProcessedByAccount(processed.getHeader.accountPublicKey)
+          p <- reader.readProcessedByAccount(
+                PublicKeyHash(processed.getHeader.accountPublicKeyHash)
+              )
           //should
         } yield {
           p shouldBe List(processed)
@@ -466,8 +468,8 @@ trait DeployStorageSpec
   private def chooseHash(deploys: List[Deploy]): ByteString =
     deploys(Random.nextInt(deploys.size)).deployHash
 
-  private def chooseAccount(deploys: List[Deploy]): ByteString =
-    deploys(Random.nextInt(deploys.size)).getHeader.accountPublicKey
+  private def chooseAccount(deploys: List[Deploy]): PublicKeyHashBS =
+    PublicKeyHash(deploys(Random.nextInt(deploys.size)).getHeader.accountPublicKeyHash)
 
   private implicit class DeployStorageWriterOps(writer: DeployStorageWriter[Task]) {
     def addAsPending(d: Deploy): Task[Unit]   = writer.addAsPending(List(d))

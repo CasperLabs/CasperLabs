@@ -4,22 +4,13 @@ import {U512} from "../../../../contract-as/assembly/bignum";
 import {getMainPurse} from "../../../../contract-as/assembly/account";
 import {transferFromPurseToAccount, TransferredTo} from "../../../../contract-as/assembly/purse";
 
-enum Args{
-    Account = 0,
-    Amount = 1
-}
+const ARG_TARGET = "target";
+const ARG_AMOUNT = "amount";
+
 
 export function call(): void {
-    const accountBytes = CL.getArg(Args.Account);
-    if (accountBytes === null) {
-        Error.fromErrorCode(ErrorCode.MissingArgument).revert();
-        return;
-    }
-    const amountBytes = CL.getArg(Args.Amount);
-    if (amountBytes === null) {
-        Error.fromErrorCode(ErrorCode.MissingArgument).revert();
-        return;
-    }
+    const accountBytes = CL.getNamedArg(ARG_TARGET);
+    const amountBytes = CL.getNamedArg(ARG_AMOUNT);
     const amountResult = U512.fromBytes(amountBytes);
     if (amountResult.hasError()){
         Error.fromErrorCode(ErrorCode.InvalidArgument).revert();

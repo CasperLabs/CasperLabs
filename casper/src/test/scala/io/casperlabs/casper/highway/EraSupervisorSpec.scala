@@ -6,7 +6,7 @@ import cats.implicits._
 import io.casperlabs.casper.consensus.Block.MessageRole
 import io.casperlabs.comm.gossiping.WaitHandle
 import io.casperlabs.comm.gossiping.relaying.BlockRelaying
-import io.casperlabs.crypto.Keys.PublicKeyBS
+import io.casperlabs.crypto.Keys
 import io.casperlabs.models.Message
 import io.casperlabs.storage.{BlockHash, SQLiteStorage}
 import monix.eval.Task
@@ -43,15 +43,22 @@ class EraSupervisorSpec
           b4 <- e2.block(messageProducer, b2)
           e3 <- e2.addChildEra(b3)
           e4 <- e2.addChildEra(b4)
-          b5 <- e4.block(messageProducer, b3)
+          b5 <- e4.block(messageProducer, b4)
           e5 <- e4.addChildEra(b5)
+
+          // Make sure all key blocks were finalized. This will set the LFB to b5
+          _ <- List(b1, b2, b3, b4, b5).traverse(db.markAsFinalized(_, Set.empty, Set.empty))
+
           // Wait until where e3 and e4 are voting.
           // Their parent eras will have their voting over, and
           // their children should be active.
-          _      <- sleepUntil(conf.toInstant(Ticks(e3.endTick)) plus postEraVotingDuration / 2)
+          _ <- sleepUntil(conf.toInstant(Ticks(e3.endTick)) plus postEraVotingDuration / 2)
+
           active <- EraSupervisor.collectActiveEras[Task](makeRuntime)
         } yield {
-          active.map(_._1.era) should contain theSameElementsAs List(e3, e4, e5)
+          // b3 is not in the main chain if the LFB is b5, so it won't be considered active.
+          val expected = List(e4, e5).map(_.keyBlockHash)
+          active.map(_._1.era.keyBlockHash) should contain theSameElementsAs expected
         }
     }
   }
@@ -89,7 +96,7 @@ class EraSupervisorSpec
               keyBlockHash: BlockHash,
               roundId: Ticks,
               mainParent: Message.Block,
-              justifications: Map[PublicKeyBS, Set[Message]],
+              justifications: Map[Keys.PublicKeyHashBS, Set[Message]],
               isBookingBlock: Boolean,
               messageRole: MessageRole
           ) = Task.raiseError(new RuntimeException("Stop the agenda!"))
@@ -130,7 +137,7 @@ class EraSupervisorSpec
           isSyncedRef
         ) (timer, db) {
 
-          val validatorId: PublicKeyBS = validator
+          val validatorId: Keys.PublicKeyHashBS = validator
 
           override val test = for {
             _        <- sleepUntil(start plus length)

@@ -10,7 +10,7 @@ use crate::wasm_costs::WasmCosts;
 //NOTE: size of Wasm memory page is 64 KiB
 pub const MEM_PAGES: u32 = 64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PreprocessingError {
     Deserialize(String),
     OperationForbiddenByGasRules,

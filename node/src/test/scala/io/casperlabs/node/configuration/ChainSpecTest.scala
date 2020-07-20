@@ -5,6 +5,8 @@ import cats.data.ValidatedNel
 import com.google.protobuf.ByteString
 import io.casperlabs.crypto.codec.{Base16, Base64}
 import io.casperlabs.casper.consensus.state
+import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
+import io.casperlabs.crypto.Keys.PublicKey
 import io.casperlabs.ipc
 import java.io.File
 import java.nio.file.Paths
@@ -109,19 +111,26 @@ class ChainSpecTest extends WordSpecLike with Matchers with Inspectors {
           val accounts = eeGenesisConfig.accounts
           accounts should have size 4
 
+          def publicKeyHash(bytes: Array[Byte]) =
+            Ed25519.publicKeyHash(PublicKey(bytes))
+
           // The parser should handle Base64 and Base16 as well; the file has a mixture of both.
           // This is just a reminder, it doesn't matter what we use here.
-          accounts(0).publicKey shouldBe ByteString.copyFrom(
-            Base64.tryDecode("o8C2vZUXgaDKX3pfXmSJxeNfkHueLMrgiP1wIbSYHvo=").get
+          accounts(0).publicKeyHash shouldBe ByteString.copyFrom(
+            publicKeyHash(Base64.tryDecode("o8C2vZUXgaDKX3pfXmSJxeNfkHueLMrgiP1wIbSYHvo=").get)
           )
-          accounts(1).publicKey shouldBe ByteString.copyFrom(
-            Base16.decode("d6f1494392d44f085433a83fd620584c074627df2353e1d95e7f616392d02907")
+          accounts(1).publicKeyHash shouldBe ByteString.copyFrom(
+            publicKeyHash(
+              Base16.decode("d6f1494392d44f085433a83fd620584c074627df2353e1d95e7f616392d02907")
+            )
           )
-          accounts(2).publicKey shouldBe ByteString.copyFrom(
-            Base16.decode("6ddcc278909af5b923d9eb88e043d4349dc0034ad95fdc2b4692b67395adfd16")
+          accounts(2).publicKeyHash shouldBe ByteString.copyFrom(
+            publicKeyHash(
+              Base16.decode("6ddcc278909af5b923d9eb88e043d4349dc0034ad95fdc2b4692b67395adfd16")
+            )
           )
-          accounts(3).publicKey shouldBe ByteString.copyFrom(
-            Base64.tryDecode("V3dfs7swdXYE68RTvQObGZ6PCadHZKwWkPc25zS33hg=").get
+          accounts(3).publicKeyHash shouldBe ByteString.copyFrom(
+            publicKeyHash(Base64.tryDecode("V3dfs7swdXYE68RTvQObGZ6PCadHZKwWkPc25zS33hg=").get)
           )
 
           accounts(0).getBalance.value shouldBe "0"

@@ -6,7 +6,10 @@ extern crate alloc;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use contract::contract_api::{runtime, storage};
-use types::{Key, URef, U128, U256, U512};
+use types::{
+    contracts::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    URef, U128, U256, U512,
+};
 
 #[no_mangle]
 pub extern "C" fn do_nothing() {}
@@ -57,7 +60,19 @@ pub extern "C" fn call() {
     let u019 = storage::new_uref(v19);
     let u020 = storage::new_uref(v20);
     let u021 = storage::new_uref(v21);
-    let u022 = storage::store_function_at_hash("do_nothing", BTreeMap::new());
+    let u022 = {
+        let mut entry_points = EntryPoints::new();
+        entry_points.add_entry_point(EntryPoint::new(
+            "do_nothing",
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        ));
+        let (contract_hash, _contract_version) =
+            storage::new_contract(entry_points, None, None, None);
+        contract_hash
+    };
 
     runtime::put_key("v01", u001.into());
     runtime::put_key("v02", u002.into());

@@ -2,6 +2,8 @@ package io.casperlabs.crypto
 import cats.syntax.either._
 import com.google.protobuf.ByteString
 import io.casperlabs.crypto.signatures.SignatureAlgorithm
+import io.casperlabs.crypto.hash.Blake2b256
+import java.nio.charset.StandardCharsets
 import shapeless.tag.@@
 
 object Keys {
@@ -26,13 +28,18 @@ object Keys {
 
   sealed trait PrivateKeyTag
   type PrivateKey = Array[Byte] @@ PrivateKeyTag
-
   def PrivateKey(a: Array[Byte]): PrivateKey = a.asInstanceOf[PrivateKey]
 
   sealed trait SignatureTag
   type Signature = Array[Byte] @@ SignatureTag
-
   def Signature(a: Array[Byte]): Signature = a.asInstanceOf[Signature]
+
+  sealed trait PublicKeyHashTag
+  type PublicKeyHash = Array[Byte] @@ PublicKeyHashTag
+  def PublicKeyHash(a: Array[Byte]): PublicKeyHash = a.asInstanceOf[PublicKeyHash]
+
+  type PublicKeyHashBS = ByteString @@ PublicKeyHashTag
+  def PublicKeyHash(a: ByteString): PublicKeyHashBS = a.asInstanceOf[PublicKeyHashBS]
 
   sealed trait ParseError { self =>
     def errorMessage: String
@@ -111,5 +118,18 @@ object Keys {
               ParseError.EmptyPublicKey.asParseError.asLeft[ParseResult]
           }
       }
+  }
+
+  /** Compute a unique hash from the algorithm name and a public key, used for accounts. */
+  val publicKeyHash: String => PublicKey => PublicKeyHash = {
+    val separator = Array[Byte](0)
+    (signatureAlgorithm: String) => {
+      val prefix = signatureAlgorithm.toUpperCase.getBytes(StandardCharsets.UTF_8) ++ separator
+      (publicKey: PublicKey) => {
+        val hash =
+          if (publicKey.isEmpty) Array.empty[Byte] else Blake2b256.hash(prefix ++ publicKey)
+        PublicKeyHash(hash)
+      }
+    }
   }
 }

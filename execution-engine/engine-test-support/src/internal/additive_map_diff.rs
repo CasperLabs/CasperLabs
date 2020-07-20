@@ -55,7 +55,7 @@ mod tests {
     use lazy_static::lazy_static;
     use rand::{self, Rng};
 
-    use types::{BLAKE2B_DIGEST_LENGTH, KEY_LOCAL_SEED_LENGTH};
+    use types::{AccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH};
 
     use super::*;
 
@@ -67,10 +67,10 @@ mod tests {
             let mut map = AdditiveMap::new();
             for i in 0..random_element_count() {
                 map.insert(
-                    Key::Local {
-                        seed: [i; KEY_LOCAL_SEED_LENGTH],
-                        hash: [i; BLAKE2B_DIGEST_LENGTH],
-                    },
+                    Key::URef(URef::new(
+                        [i; BLAKE2B_DIGEST_LENGTH],
+                        AccessRights::READ_ADD_WRITE,
+                    )),
                     Transform::AddInt32(i.into()),
                 );
             }
@@ -80,10 +80,10 @@ mod tests {
             let mut map = AdditiveMap::new();
             for i in 0..random_element_count() {
                 map.insert(
-                    Key::Local {
-                        seed: [i + MAX_ELEMENTS; KEY_LOCAL_SEED_LENGTH],
-                        hash: [i + MAX_ELEMENTS; BLAKE2B_DIGEST_LENGTH],
-                    },
+                    Key::URef(URef::new(
+                        [i + MAX_ELEMENTS; BLAKE2B_DIGEST_LENGTH],
+                        AccessRights::READ_ADD_WRITE,
+                    )),
                     Transform::Identity,
                 );
             }
@@ -93,10 +93,10 @@ mod tests {
             let mut map = AdditiveMap::new();
             for i in 0..random_element_count() {
                 map.insert(
-                    Key::Local {
-                        seed: [i; KEY_LOCAL_SEED_LENGTH],
-                        hash: [i; BLAKE2B_DIGEST_LENGTH],
-                    },
+                    Key::URef(URef::new(
+                        [i; BLAKE2B_DIGEST_LENGTH],
+                        AccessRights::READ_ADD_WRITE,
+                    )),
                     Transform::AddUInt512(i.into()),
                 );
             }

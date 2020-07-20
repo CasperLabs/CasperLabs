@@ -12,7 +12,7 @@ import Modal from './Modal';
 import { CLType, Key } from 'casperlabs-grpc/io/casperlabs/casper/consensus/state_pb';
 import Pages from './Pages';
 import { Link } from 'react-router-dom';
-import { DeployUtil } from 'casperlabs-sdk';
+import { DeployUtil, Signer } from 'casperlabs-sdk';
 
 
 interface Props {
@@ -41,7 +41,7 @@ export class DeployContractsForm extends React.Component<Props, {}> {
 
   render() {
     const { deployContractsContainer } = this.props;
-    let hint = (window as any).casperlabsHelper?.isConnected() ? (
+    let hint = Signer.isConnected() ? (
       <p>
         <SuccessIcon/> We will use CasperLabs Sign Helper plugin to sign the deploy
       </p>
@@ -91,14 +91,28 @@ export class DeployContractsForm extends React.Component<Props, {}> {
             }
             {
               deployContractsContainer.deployConfiguration.$.contractType.$ === DeployUtil.ContractType.Hash && (
-                <TextField id="id-contract-hash" label="Hash(Base16) of the Contract"
-                  fieldState={deployContractsContainer.deployConfiguration.$.contractHash} />
+                <React.Fragment>
+                  <TextField id="id-contract-hash" label="Hash(Base16) of the Contract"
+                             fieldState={deployContractsContainer.deployConfiguration.$.contractHash} />
+                  <TextField id="id-contract-hash" label="Entry point"
+                             fieldState={deployContractsContainer.deployConfiguration.$.entryPoint} />
+                </React.Fragment>
+              )
+            }
+            {
+              deployContractsContainer.deployConfiguration.$.contractType.$ === DeployUtil.ContractType.Name && (
+                <React.Fragment>
+                  <TextField id="id-contract-hash" label="Name of the Contract"
+                             fieldState={deployContractsContainer.deployConfiguration.$.contractName} />
+                  <TextField id="id-contract-hash" label="Entry point"
+                             fieldState={deployContractsContainer.deployConfiguration.$.entryPoint} />
+                </React.Fragment>
               )
             }
             <NumberField id="id-payment-amount" label="Payment Amount"
-              fieldState={deployContractsContainer.deployConfiguration.$.paymentAmount} />
+                         fieldState={deployContractsContainer.deployConfiguration.$.paymentAmount} />
             <TextField id="id-from-address" label="From (Optional)"
-              fieldState={deployContractsContainer.deployConfiguration.$.fromAddress} />
+                       fieldState={deployContractsContainer.deployConfiguration.$.fromAddress} />
           </Form>
 
           {deployContractsContainer.signDeployModal && modalAccountForm}
@@ -140,14 +154,14 @@ const ArgumentRow = observer((props: {
         <div className="row">
           <div className="col pl-0 pr-1">
             <select className="form-control" value={props.deployArgument.$.type.value}
-              onChange={e => {
-                let v = e.target.value;
-                if (v === 'Bytes') {
-                  props.deployArgument.$.type.onChange(v);
-                } else {
-                  props.deployArgument.$.type.onChange(parseInt(e.target.value) as any);
-                }
-              }}>
+                    onChange={e => {
+                      let v = e.target.value;
+                      if (v === 'Bytes') {
+                        props.deployArgument.$.type.onChange(v);
+                      } else {
+                        props.deployArgument.$.type.onChange(parseInt(e.target.value) as any);
+                      }
+                    }}>
               {
                 Object.keys(CLType.Simple).filter(opt =>
                   (CLType.Simple as any)[opt] !== CLType.Simple.UNIT
@@ -165,9 +179,9 @@ const ArgumentRow = observer((props: {
           {firstTypeValue === CLType.Simple.KEY && (
             <div className="col pl-0 pr-1">
               <select className="form-control" value={props.deployArgument.$.secondType.$?.toString()}
-                onChange={e => {
-                  props.deployArgument.$.secondType.onChange(e.target.value as KeyType);
-                }}>
+                      onChange={e => {
+                        props.deployArgument.$.secondType.onChange(e.target.value as KeyType);
+                      }}>
                 {
                   (firstTypeValue === CLType.Simple.KEY && (
                     Object.keys(KeyType).map(opt => (
@@ -191,9 +205,9 @@ const ArgumentRow = observer((props: {
           {((firstTypeValue === CLType.Simple.KEY && secondTypeValue === KeyType.UREF) || firstTypeValue === CLType.Simple.UREF) && (
             <div className="col pl-0 pr-0">
               <select className="form-control" value={props.deployArgument.$.URefAccessRight.$ as number}
-                onChange={e => {
-                  props.deployArgument.$.URefAccessRight.onChange(parseInt(e.target.value) as any);
-                }}>
+                      onChange={e => {
+                        props.deployArgument.$.URefAccessRight.onChange(parseInt(e.target.value) as any);
+                      }}>
                 {
                   Object.keys(Key.URef.AccessRights).map(opt => (
                     <option key={opt} value={(Key.URef.AccessRights as any)[opt]}>
@@ -246,56 +260,56 @@ const ArgumentRow = observer((props: {
 const ArgumentTable = observer((props: {
   deployContractsContainer: DeployContractsContainer
 }) => (
-    <div>
-      <table className="table">
-        <thead>
+  <div>
+    <table className="table">
+      <thead>
+      <tr>
+        <th style={{ width: '20%' }}>Name</th>
+        <th style={{ width: '30%' }}>Type</th>
+        <th style={{ width: '40%' }}>Value</th>
+      </tr>
+      </thead>
+      <tbody>
+      {
+        !props.deployContractsContainer.editing && props.deployContractsContainer.deployArguments.$.length === 0 ? (
           <tr>
-            <th style={{ width: '20%' }}>Name</th>
-            <th style={{ width: '30%' }}>Type</th>
-            <th style={{ width: '40%' }}>Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {
-            !props.deployContractsContainer.editing && props.deployContractsContainer.deployArguments.$.length === 0 ? (
-              <tr>
-                <td>
-                  No Arguments
+            <td>
+              No Arguments
             </td>
-              </tr>
-            ) : (
-                props.deployContractsContainer.deployArguments.$.map((deployArgument, idx) => (
-                  <ArgumentRow key={idx} deployArgument={deployArgument} infix={`saved-${idx}`}
-                    onProductTableUpdate={() => {
-                    }} onDelEvent={props.deployContractsContainer.removeDeployArgument} />
-                ))
-              )
-          }
-          {
-            props.deployContractsContainer.editing && props.deployContractsContainer.editingDeployArguments.$.map((deployArgument, idx) => (
-              <ArgumentRow key={idx} infix={`editing-${idx}`} deployArgument={deployArgument}
-                onProductTableUpdate={() => {
-                }} />
-            ))
-          }
-        </tbody>
-      </table>
-      <div className="mt-3">
-        <ul className="list-inline mb-0">
-          <li className="list-inline-item">
-            <Button onClick={props.deployContractsContainer.addNewEditingDeployArgument} title="Add" size='xs' />
+          </tr>
+        ) : (
+          props.deployContractsContainer.deployArguments.$.map((deployArgument, idx) => (
+            <ArgumentRow key={idx} deployArgument={deployArgument} infix={`saved-${idx}`}
+                         onProductTableUpdate={() => {
+                         }} onDelEvent={props.deployContractsContainer.removeDeployArgument} />
+          ))
+        )
+      }
+      {
+        props.deployContractsContainer.editing && props.deployContractsContainer.editingDeployArguments.$.map((deployArgument, idx) => (
+          <ArgumentRow key={idx} infix={`editing-${idx}`} deployArgument={deployArgument}
+                       onProductTableUpdate={() => {
+                       }} />
+        ))
+      }
+      </tbody>
+    </table>
+    <div className="mt-3">
+      <ul className="list-inline mb-0">
+        <li className="list-inline-item">
+          <Button onClick={props.deployContractsContainer.addNewEditingDeployArgument} title="Add" size='xs' />
+        </li>
+        {props.deployContractsContainer.editing && (
+          <li className="list-inline-item float-right mr-5">
+            <ListInline>
+              <Button onClick={props.deployContractsContainer.cancelEditing} title='cancel' size='xs'
+                      type="secondary" />
+              <Button onClick={props.deployContractsContainer.saveEditingDeployArguments} title='save' size='xs'
+                      type="success" />
+            </ListInline>
           </li>
-          {props.deployContractsContainer.editing && (
-            <li className="list-inline-item float-right mr-5">
-              <ListInline>
-                <Button onClick={props.deployContractsContainer.cancelEditing} title='cancel' size='xs'
-                  type="secondary" />
-                <Button onClick={props.deployContractsContainer.saveEditingDeployArguments} title='save' size='xs'
-                  type="success" />
-              </ListInline>
-            </li>
-          )}
-        </ul>
-      </div>
+        )}
+      </ul>
     </div>
-  ));
+  </div>
+));

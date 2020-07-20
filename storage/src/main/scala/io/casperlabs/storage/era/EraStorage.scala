@@ -11,7 +11,7 @@ import simulacrum.typeclass
 @typeclass
 trait EraStorage[F[_]] {
 
-  /** Persist an era. Return whether it already existed. */
+  /** Persist an era. Return true if the era was new, false if it already existed. */
   def addEra(era: Era): F[Boolean]
 
   /** Retrieve the era, if it exists, by its key block hash. */

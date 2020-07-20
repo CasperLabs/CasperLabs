@@ -36,6 +36,16 @@ default = ["contract/std", "contract/test-support", "engine-core/test-support", 
 enable-bonding = ["engine-test-support/enable-bonding"]
 use-as-wasm = ["engine-test-support/use-as-wasm"]
 use-system-contracts = ["engine-test-support/use-system-contracts"]
+no-unstable-features = [
+    "contract/no-unstable-features",
+    "engine-core/no-unstable-features",
+    "engine-grpc-server/no-unstable-features",
+    "engine-shared/no-unstable-features",
+    "engine-storage/no-unstable-features",
+    "engine-test-support/no-unstable-features",
+    "engine-wasm-prep/no-unstable-features",
+    "types/no-unstable-features"
+]
 
 [lib]
 bench = false

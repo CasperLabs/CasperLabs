@@ -4,6 +4,7 @@ import cats.implicits._
 import cats.mtl.MonadState
 import com.github.ghik.silencer.silent
 import com.google.protobuf.ByteString
+import io.casperlabs.crypto.Keys
 import io.casperlabs.casper.Estimator.{BlockHash, Validator}
 import io.casperlabs.casper.consensus.Block
 import io.casperlabs.casper.finality.votingmatrix.VotingMatrix.VotingMatrix
@@ -255,7 +256,7 @@ class VotingMatrixTest extends FlatSpec with Matchers with BlockGenerator with S
   def createBlockAndUpdateVotingMatrix[F[_]: MonadThrowable: Time: BlockStorage: DagStorage: DeployStorage: AncestorsStorage](
       parentsHashList: Seq[BlockHash],
       latestFinalizedBlockHash: BlockHash,
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       bonds: Seq[Bond] = Seq.empty[Bond],
       justifications: collection.Map[Validator, BlockHash] = HashMap.empty[Validator, BlockHash]
   )(
@@ -272,7 +273,7 @@ class VotingMatrixTest extends FlatSpec with Matchers with BlockGenerator with S
       bMessage   <- MonadThrowable[F].fromTry(Message.fromBlock(b))
       dag        <- DagStorage[F].getRepresentation
       lfbMsg     <- dag.lookupUnsafe(latestFinalizedBlockHash)
-      validators = bonds.map(_.validatorPublicKey).toSet
+      validators = bonds.map(b => Keys.PublicKeyHash(b.validatorPublicKeyHash)).toSet
       votedBranch <- io.casperlabs.casper.finality
                       .votedBranch(dag, latestFinalizedBlockHash, bMessage)
       panorama <- FinalityDetectorUtil

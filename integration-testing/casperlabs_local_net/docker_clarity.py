@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from casperlabs_local_net.common import public_key_hash_hex
 from casperlabs_local_net.docker_base import LoggingDockerBase
 from casperlabs_local_net.docker_config import DockerConfig
 
@@ -16,6 +17,13 @@ class DockerClarity(LoggingDockerBase):
     @property
     def faucet_account_path(self) -> Path:
         return Path(self.host_mount_dir) / "faucet-account"
+
+    @property
+    def faucet_account_public_key_hash(self) -> str:
+        public_key_path = self.faucet_account_path / "account-id"
+        with public_key_path.open() as f:
+            public_key_base64 = f.readline()
+            return public_key_hash_hex(public_key_base64)
 
     @property
     def volumes(self) -> dict:

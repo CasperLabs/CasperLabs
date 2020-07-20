@@ -14,7 +14,7 @@ import io.casperlabs.casper.util.execengine.ExecEngineUtil.StateHash
 import io.casperlabs.casper.util.{CasperLabsProtocol, ProtoUtil}
 import io.casperlabs.casper.validation.Errors.DropErrorWrapper
 import io.casperlabs.casper.validation.Validation.BlockEffects
-import io.casperlabs.crypto.Keys.{PublicKey, Signature}
+import io.casperlabs.crypto.Keys, Keys.{PublicKey, Signature}
 import io.casperlabs.catscontrib.Fs2Compiler
 import io.casperlabs.ipc
 import io.casperlabs.smartcontracts.ExecutionEngineService
@@ -40,7 +40,10 @@ trait Validation[F[_]] {
     * If block contains an invalid justification block B and the creator of B is still bonded,
     * return a RejectableBlock. Otherwise return an IncludeableBlock.
     */
-  def neglectedInvalidBlock(block: Block, invalidBlockTracker: Set[BlockHash]): F[Unit]
+  def neglectedInvalidBlock(
+      block: Block,
+      invalidBlockTracker: Set[BlockHash]
+  ): F[Unit]
 
   /**
     * Checks that the parents of `b` were chosen correctly according to the
@@ -53,7 +56,7 @@ trait Validation[F[_]] {
     * avoid repeating work downstream.
     */
   def parents(
-      b: Block,
+      block: Block,
       dag: DagRepresentation[F]
   )(implicit bs: BlockStorage[F]): F[ExecEngineUtil.MergeResult[ExecEngineUtil.TransformMap, Block]]
 
@@ -415,6 +418,21 @@ object Validation {
       verify(d, Signature(sig.sig.toByteArray), key)
     }
 
+  def publicKeyHash(
+      sig: consensus.Signature,
+      key: Keys.PublicKeyBS,
+      hash: Keys.PublicKeyHashBS
+  ): Boolean = {
+    val pk = Keys.PublicKey(key.toByteArray)
+    val computed = sig.sigAlgorithm match {
+      case SignatureAlgorithm(sa) =>
+        sa.publicKeyHash(pk)
+      case other =>
+        Keys.publicKeyHash(other)(pk)
+    }
+    ByteString.copyFrom(computed) == hash
+  }
+
   def deploySignature[F[_]: MonadThrowable: Log](
       d: consensus.Deploy
   ): F[Boolean] =
@@ -461,7 +479,7 @@ object Validation {
         verify(
           b.blockHash.toByteArray,
           Signature(b.getSignature.sig.toByteArray),
-          PublicKey(b.validatorPublicKey.toByteArray)
+          PublicKey(b.getHeader.validatorPublicKey.toByteArray)
         )
       ) match {
         case Success(true) => true.pure[F]
@@ -472,6 +490,21 @@ object Validation {
         b.blockHash,
         s"signature algorithm '${b.getSignature.sigAlgorithm}' is unsupported."
       ).as(false)
+    }
+
+  def validatorPublicKeyHash[F[_]: Monad: Log](b: BlockSummary): F[Boolean] =
+    publicKeyHash(
+      b.getSignature,
+      Keys.PublicKey(b.getHeader.validatorPublicKey),
+      Keys.PublicKeyHash(b.getHeader.validatorPublicKeyHash)
+    ) match {
+      case true =>
+        true.pure[F]
+      case false =>
+        ignore[F](
+          b.blockHash,
+          s"the validator's public key hash doesn't match the key and the signature algorithm."
+        ).as(false)
     }
 
   def deployHeader[F[_]: MonadThrowable: RaiseValidationError: Log: Time](
@@ -606,7 +639,7 @@ object Validation {
                else
                  ignore[F](
                    block.blockHash,
-                   s"block creator ${PrettyPrinter.buildString(block.validatorPublicKey)} has 0 weight."
+                   s"block creator ${PrettyPrinter.buildString(block.validatorPublicKeyHash)} has 0 weight."
                  ).as(false)
     } yield result
 
@@ -687,7 +720,7 @@ object Validation {
       isHighway: Boolean
   ): F[Unit] = {
     val prevBlockHash = b.getHeader.validatorPrevBlockHash
-    val validatorId   = b.getHeader.validatorPublicKey
+    val validatorId   = Keys.PublicKeyHash(b.getHeader.validatorPublicKeyHash)
     if (prevBlockHash.isEmpty) {
       ().pure[F]
     } else {

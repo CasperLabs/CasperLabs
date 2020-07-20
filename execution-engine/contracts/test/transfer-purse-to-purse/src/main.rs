@@ -15,12 +15,9 @@ const PURSE_MAIN: &str = "purse:main";
 const PURSE_TRANSFER_RESULT: &str = "purse_transfer_result";
 const MAIN_PURSE_BALANCE: &str = "main_purse_balance";
 
-#[repr(u16)]
-enum Args {
-    SourcePurse = 0,
-    DestinationPurse = 1,
-    Amount = 2,
-}
+const ARG_SOURCE: &str = "source";
+const ARG_TARGET: &str = "target";
+const ARG_AMOUNT: &str = "amount";
 
 #[repr(u16)]
 enum CustomError {
@@ -37,9 +34,7 @@ pub extern "C" fn call() {
     // add or update `main_purse` if it doesn't exist already
     runtime::put_key(PURSE_MAIN, Key::from(main_purse));
 
-    let src_purse_name: String = runtime::get_arg(Args::SourcePurse as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let src_purse_name: String = runtime::get_named_arg(ARG_SOURCE);
 
     let src_purse_key = runtime::get_key(&src_purse_name)
         .unwrap_or_revert_with(ApiError::User(CustomError::InvalidSourcePurseKey as u16));
@@ -50,9 +45,7 @@ pub extern "C" fn call() {
             CustomError::UnexpectedSourcePurseKeyVariant as u16,
         )),
     };
-    let dst_purse_name: String = runtime::get_arg(Args::DestinationPurse as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let dst_purse_name: String = runtime::get_named_arg(ARG_TARGET);
 
     let dst_purse = if !runtime::has_key(&dst_purse_name) {
         // If `dst_purse_name` is not in known urefs list then create a new purse
@@ -71,9 +64,7 @@ pub extern "C" fn call() {
             )),
         }
     };
-    let amount: U512 = runtime::get_arg(Args::Amount as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
     let transfer_result = system::transfer_from_purse_to_purse(*src_purse, dst_purse, amount);
 

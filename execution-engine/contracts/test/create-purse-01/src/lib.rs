@@ -4,21 +4,12 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use contract::{
-    contract_api::{runtime, system},
-    unwrap_or_revert::UnwrapOrRevert,
-};
-use types::ApiError;
+use contract::contract_api::{runtime, system};
 
-#[repr(u32)]
-enum Args {
-    PurseName = 0,
-}
+const ARG_PURSE_NAME: &str = "purse_name";
 
 pub fn delegate() {
-    let purse_name: String = runtime::get_arg(Args::PurseName as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let purse_name: String = runtime::get_named_arg(ARG_PURSE_NAME);
     let purse = system::create_purse();
     runtime::put_key(&purse_name, purse.into());
 }

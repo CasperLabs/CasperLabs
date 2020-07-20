@@ -6,14 +6,9 @@ use contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use types::{
-    account::{PublicKey, Weight},
+    account::{AccountHash, Weight},
     ApiError,
 };
-
-enum Arg {
-    Account = 0,
-    Weight = 1,
-}
 
 #[repr(u16)]
 enum Error {
@@ -26,14 +21,13 @@ impl Into<ApiError> for Error {
     }
 }
 
+const ARG_ACCOUNT: &str = "account";
+const ARG_WEIGHT: &str = "weight";
+
 #[no_mangle]
 pub extern "C" fn call() {
-    let account: PublicKey = runtime::get_arg(Arg::Account as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let weight_val: u32 = runtime::get_arg(Arg::Weight as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let account: AccountHash = runtime::get_named_arg(ARG_ACCOUNT);
+    let weight_val: u32 = runtime::get_named_arg(ARG_WEIGHT);
     let weight = Weight::new(weight_val as u8);
 
     account::update_associated_key(account, weight)

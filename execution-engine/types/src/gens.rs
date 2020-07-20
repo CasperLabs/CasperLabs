@@ -2,19 +2,22 @@
 //! [`Proptest`](https://crates.io/crates/proptest).
 #![allow(missing_docs)]
 
-use alloc::{collections::BTreeMap, string::String, vec};
+use alloc::{boxed::Box, string::String, vec};
 
 use proptest::{
     array, bits,
-    collection::{btree_map, vec},
+    collection::{btree_map, btree_set, vec},
     option,
     prelude::*,
     result,
 };
 
 use crate::{
-    account::{PublicKey, Weight},
-    AccessRights, CLType, CLValue, Key, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
+    account::{AccountHash, Weight},
+    contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
+    AccessRights, CLType, CLValue, Contract, ContractPackage, ContractVersionKey, ContractWasm,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Key, NamedArg, Parameter,
+    Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -25,7 +28,7 @@ pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     })
 }
 
-pub fn named_keys_arb(depth: usize) -> impl Strategy<Value = BTreeMap<String, Key>> {
+pub fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
     btree_map("\\PC*", key_arb(), depth)
 }
 
@@ -57,15 +60,14 @@ pub fn uref_arb() -> impl Strategy<Value = URef> {
 
 pub fn key_arb() -> impl Strategy<Value = Key> {
     prop_oneof![
-        public_key_arb().prop_map(Key::Account),
+        account_hash_arb().prop_map(Key::Account),
         u8_slice_32().prop_map(Key::Hash),
         uref_arb().prop_map(Key::URef),
-        (u8_slice_32(), u8_slice_32()).prop_map(|(seed, key)| Key::local(seed, &key))
     ]
 }
 
-pub fn public_key_arb() -> impl Strategy<Value = PublicKey> {
-    u8_slice_32().prop_map(PublicKey::ed25519_from)
+pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
+    u8_slice_32().prop_map(AccountHash::new)
 }
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
@@ -91,6 +93,66 @@ pub fn u256_arb() -> impl Strategy<Value = U256> {
 
 pub fn u512_arb() -> impl Strategy<Value = U512> {
     vec(any::<u8>(), 0..64).prop_map(|b| U512::from_little_endian(b.as_slice()))
+}
+
+pub fn cl_simple_type_arb() -> impl Strategy<Value = CLType> {
+    prop_oneof![
+        Just(CLType::Bool),
+        Just(CLType::I32),
+        Just(CLType::I64),
+        Just(CLType::U8),
+        Just(CLType::U32),
+        Just(CLType::U64),
+        Just(CLType::U128),
+        Just(CLType::U256),
+        Just(CLType::U512),
+        Just(CLType::Unit),
+        Just(CLType::String),
+        Just(CLType::Key),
+        Just(CLType::URef),
+    ]
+}
+
+pub fn cl_type_arb() -> impl Strategy<Value = CLType> {
+    cl_simple_type_arb().prop_recursive(4, 16, 8, |element| {
+        prop_oneof![
+            // We want to produce basic types too
+            element.clone(),
+            // For complex type
+            element
+                .clone()
+                .prop_map(|val| CLType::Option(Box::new(val))),
+            element.clone().prop_map(|val| CLType::List(Box::new(val))),
+            // Fixed lists of any size
+            (element.clone(), 1u32..32u32)
+                .prop_map(|(cl_type, len)| CLType::FixedList(Box::new(cl_type), len)),
+            // Realistic Result type generator: ok is anything recursive, err is simple type
+            (element.clone(), cl_simple_type_arb()).prop_map(|(ok, err)| CLType::Result {
+                ok: Box::new(ok),
+                err: Box::new(err)
+            }),
+            // Realistic Map type generator: key is simple type, value is complex recursive type
+            (cl_simple_type_arb(), element.clone()).prop_map(|(key, value)| CLType::Map {
+                key: Box::new(key),
+                value: Box::new(value)
+            }),
+            // Various tuples
+            element
+                .clone()
+                .prop_map(|cl_type| CLType::Tuple1([Box::new(cl_type)])),
+            (element.clone(), element.clone()).prop_map(|(cl_type1, cl_type2)| CLType::Tuple2([
+                Box::new(cl_type1),
+                Box::new(cl_type2)
+            ])),
+            (element.clone(), element.clone(), element).prop_map(
+                |(cl_type1, cl_type2, cl_type3)| CLType::Tuple3([
+                    Box::new(cl_type1),
+                    Box::new(cl_type2),
+                    Box::new(cl_type3)
+                ])
+            ),
+        ]
+    })
 }
 
 pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
@@ -155,4 +217,113 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
 
 pub fn result_arb() -> impl Strategy<Value = Result<u32, u32>> {
     result::maybe_ok(any::<u32>(), any::<u32>())
+}
+
+pub fn named_args_arb() -> impl Strategy<Value = NamedArg> {
+    (".*", cl_value_arb()).prop_map(|(name, value)| NamedArg::new(name, value))
+}
+
+pub fn group_arb() -> impl Strategy<Value = Group> {
+    ".*".prop_map(Group::new)
+}
+
+pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
+    prop_oneof![
+        Just(EntryPointAccess::Public),
+        vec(group_arb(), 0..32).prop_map(EntryPointAccess::Groups),
+    ]
+}
+
+pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
+    prop_oneof![
+        Just(EntryPointType::Session),
+        Just(EntryPointType::Contract),
+    ]
+}
+
+pub fn parameter_arb() -> impl Strategy<Value = Parameter> {
+    (".*", cl_type_arb()).prop_map(|(name, cl_type)| Parameter::new(name, cl_type))
+}
+
+pub fn parameters_arb() -> impl Strategy<Value = Parameters> {
+    vec(parameter_arb(), 0..10)
+}
+
+pub fn entry_point_arb() -> impl Strategy<Value = EntryPoint> {
+    (
+        ".*",
+        parameters_arb(),
+        entry_point_type_arb(),
+        entry_point_access_arb(),
+        cl_type_arb(),
+    )
+        .prop_map(
+            |(name, parameters, entry_point_type, entry_point_access, ret)| {
+                EntryPoint::new(name, parameters, ret, entry_point_access, entry_point_type)
+            },
+        )
+}
+
+pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
+    vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
+}
+
+pub fn contract_arb() -> impl Strategy<Value = Contract> {
+    (
+        protocol_version_arb(),
+        entry_points_arb(),
+        u8_slice_32(),
+        u8_slice_32(),
+        named_keys_arb(20),
+    )
+        .prop_map(
+            |(
+                protocol_version,
+                entry_points,
+                contract_package_hash_arb,
+                contract_wasm_hash,
+                named_keys,
+            )| {
+                Contract::new(
+                    contract_package_hash_arb,
+                    contract_wasm_hash,
+                    named_keys,
+                    entry_points,
+                    protocol_version,
+                )
+            },
+        )
+}
+
+pub fn contract_wasm_arb() -> impl Strategy<Value = ContractWasm> {
+    vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
+}
+
+pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
+    (1..32u32, 1..1000u32)
+        .prop_map(|(major, contract_ver)| ContractVersionKey::new(major, contract_ver))
+}
+
+pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
+    btree_map(contract_version_key_arb(), u8_slice_32(), 1..5)
+}
+
+pub fn disabled_versions_arb() -> impl Strategy<Value = DisabledVersions> {
+    btree_set(contract_version_key_arb(), 0..5)
+}
+
+pub fn groups_arb() -> impl Strategy<Value = Groups> {
+    btree_map(group_arb(), btree_set(uref_arb(), 1..10), 0..5)
+}
+
+pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
+    (
+        uref_arb(),
+        contract_versions_arb(),
+        disabled_versions_arb(),
+        groups_arb(),
+    )
+        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+            ContractPackage::new(access_key, versions, disabled_versions, groups)
+        })
 }

@@ -48,7 +48,7 @@ class GenesisTest extends FlatSpec with Matchers with StorageFixture {
             case (key, balance, bond) =>
               ipc.ChainSpec.GenesisConfig.ExecConfig
                 .GenesisAccount()
-                .withPublicKey(ByteString.copyFrom(java.util.Base64.getDecoder.decode(key)))
+                .withPublicKeyHash(ByteString.copyFrom(java.util.Base64.getDecoder.decode(key)))
                 .withBalance(state.BigInt(balance.toString, bitWidth = 512))
                 .withBondedAmount(state.BigInt(bond.toString, bitWidth = 512))
           })
@@ -61,10 +61,13 @@ class GenesisTest extends FlatSpec with Matchers with StorageFixture {
           .withMaxTtlMillis(maxTtlMillis)
       )
 
-    val validatorsMap =
+    val validatorsMap: Map[Keys.PublicKeyHashBS, Weight] =
       accounts.collect {
         case (key, _, bond) if bond > 0 =>
-          (Keys.PublicKey(java.util.Base64.getDecoder.decode(key)), Weight(bond))
+          (
+            Keys.PublicKeyHash(ByteString.copyFrom(java.util.Base64.getDecoder.decode(key))),
+            Weight(bond)
+          )
       }.toMap
 
     implicit val casperSmartContractsApi = HashSetCasperTestNode.simpleEEApi[Task](validatorsMap)

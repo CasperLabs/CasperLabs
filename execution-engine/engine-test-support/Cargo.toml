@@ -1,6 +1,6 @@
 [package]
 name = "casperlabs-engine-test-support"
-version = "0.7.1" # when updating, also update 'html_root_url' in lib.rs
+version = "0.8.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Library to support testing of Wasm smart contracts for use on the CasperLabs network."
@@ -11,12 +11,12 @@ repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-eng
 license-file = "../../LICENSE"
 
 [dependencies]
-contract = { version = "0.5.1", path = "../contract", package = "casperlabs-contract" }
-engine-core = { version = "0.6.1", path = "../engine-core", package = "casperlabs-engine-core" }
-engine-grpc-server = { version = "0.19.1", path = "../engine-grpc-server", package = "casperlabs-engine-grpc-server" }
-engine-shared = { version = "0.6.1", path = "../engine-shared", package = "casperlabs-engine-shared" }
-engine-storage = { version = "0.6.1", path = "../engine-storage", package = "casperlabs-engine-storage" }
-engine-wasm-prep = { version = "0.5.1", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
+contract = { version = "0.6.0", path = "../contract", package = "casperlabs-contract" }
+engine-core = { version = "0.7.0", path = "../engine-core", package = "casperlabs-engine-core" }
+engine-grpc-server = { version = "0.20.0", path = "../engine-grpc-server", package = "casperlabs-engine-grpc-server" }
+engine-shared = { version = "0.7.0", path = "../engine-shared", package = "casperlabs-engine-shared" }
+engine-storage = { version = "0.7.0", path = "../engine-storage", package = "casperlabs-engine-storage" }
+engine-wasm-prep = { version = "0.6.0", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
 grpc = "0.6.1"
 lazy_static = "1"
 lmdb = "0.8.0"
@@ -24,7 +24,7 @@ log = "0.4.8"
 num-traits = "0.2.10"
 rand = "0.7.2"
 protobuf = "=2.8"
-types = { version = "0.5.1", path = "../types", package = "casperlabs-types", features = ["std"] }
+types = { version = "0.6.0", path = "../types", package = "casperlabs-types", features = ["std"] }
 
 [dev-dependencies]
 version-sync = "0.8"
@@ -34,3 +34,15 @@ enable-bonding = []
 use-as-wasm = []
 use-system-contracts = []
 test-support = ["engine-core/test-support", "engine-grpc-server/test-support", "contract/test-support"]
+no-unstable-features = [
+    "contract/no-unstable-features",
+    "engine-core/no-unstable-features",
+    "engine-grpc-server/no-unstable-features",
+    "engine-shared/no-unstable-features",
+    "engine-storage/no-unstable-features",
+    "engine-wasm-prep/no-unstable-features",
+    "types/no-unstable-features"
+]
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

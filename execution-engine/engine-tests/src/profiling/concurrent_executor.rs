@@ -21,7 +21,7 @@ use engine_grpc_server::engine_server::{
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceClient},
 };
 use engine_test_support::internal::ExecuteRequestBuilder;
-use types::U512;
+use types::{runtime_args, RuntimeArgs, U512};
 
 use casperlabs_engine_tests::profiling;
 
@@ -59,6 +59,8 @@ const REQUEST_COUNT_ARG_HELP: &str = "Total number of 'ExecuteRequest's to send"
 
 const CONTRACT_NAME: &str = "transfer_to_existing_account.wasm";
 const THREAD_PREFIX: &str = "client-worker-";
+const ARG_AMOUNT: &str = "amount";
+const ARG_TARGET: &str = "target";
 
 fn socket_arg() -> Arg<'static, 'static> {
     Arg::with_name(SOCKET_ARG_NAME)
@@ -319,12 +321,12 @@ impl Drop for ClientPool {
 
 fn new_execute_request(args: &Args) -> ExecuteRequest {
     let amount = U512::one();
-    let account_1_public_key = profiling::account_1_public_key();
-    let account_2_public_key = profiling::account_2_public_key();
+    let account_1_account_hash = profiling::account_1_account_hash();
+    let account_2_account_hash = profiling::account_2_account_hash();
     ExecuteRequestBuilder::standard(
-        account_1_public_key,
+        account_1_account_hash,
         CONTRACT_NAME,
-        (account_2_public_key, amount),
+        runtime_args! { ARG_TARGET => account_2_account_hash, ARG_AMOUNT => amount },
     )
     .with_pre_state_hash(&args.pre_state_hash)
     .build()

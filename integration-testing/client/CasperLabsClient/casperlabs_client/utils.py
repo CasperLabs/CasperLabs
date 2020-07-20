@@ -1,7 +1,5 @@
-import os
 import time
 import ssl
-import pkg_resources
 import google.protobuf.text_format
 import google.protobuf.json_format
 from . import abi
@@ -24,16 +22,6 @@ def hexify(o):
 
 def jsonify(o):
     return google.protobuf.json_format.MessageToJson(o)
-
-
-def bundled_contract(file_name):
-    """
-    Return path to contract file bundled with the package.
-    """
-    p = pkg_resources.resource_filename(__name__, file_name)
-    if not os.path.exists(p):
-        raise Exception(f"Missing bundled contract {file_name} ({p})")
-    return p
 
 
 def extract_common_name(certificate_file: str) -> str:
@@ -107,7 +95,7 @@ def make_deploy(
         from_addr = bytes.fromhex(from_addr)
 
     if from_addr and len(from_addr) != 32:
-        raise Exception(f"from_addr must be 32 bytes")
+        raise Exception("from_addr must be 32 bytes")
 
     if payment_amount:
         payment_args = abi.ABI.args([abi.ABI.big_int("amount", int(payment_amount))])

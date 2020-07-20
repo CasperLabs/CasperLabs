@@ -52,15 +52,15 @@ object Utils {
       )
       .adaptError(adaptError)
 
-  def validateAccountPublicKey[F[_]: MonadThrowable](
-      keyBase16: String,
-      key: ByteString,
+  def validateAccountPublicKeyHash[F[_]: MonadThrowable](
+      hashBase16: String,
+      hash: ByteString,
       adaptError: PartialFunction[Throwable, Throwable] = PartialFunction.empty
   ): F[String] =
     Utils
       .check[F, String](
-        fallback(keyBase16, key),
-        "AccountPublicKey must be 64 base16 characters (32 bytes) long",
+        fallback(hashBase16, hash),
+        "AccountHash must be 64 base16 characters (32 bytes) long",
         _.matches("[a-f0-9]{64}")
       )
       .adaptError(adaptError)
@@ -99,32 +99,6 @@ object Utils {
                 s"Key of type address must have exactly 32 bytes, $n =/= 32 provided."
               )
             )
-        }
-      case "local" =>
-        for {
-          (seed, bytes) <- appErr
-                            .fromTry {
-                              Try(keyValue.split(':').map(Base16.decode(_)))
-                                .filter(_.length == 2)
-                                .map(arr => (arr(0), arr(1)))
-                            }
-                            .handleErrorWith(
-                              _ =>
-                                appErr.raiseError(
-                                  new IllegalArgumentException(
-                                    "Expected local key encoded as {seed}:{rest}. Where both seed and rest parts are hex encoded."
-                                  )
-                                )
-                            )
-          _ <- appErr
-                .raiseError(
-                  new IllegalArgumentException("Seed of Local key has to be exactly 32 bytes long.")
-                )
-                .whenA(seed.length != 32)
-        } yield {
-          // This is what EE does when creating local key address.
-          val hash = Blake2b256.hash(bytes)
-          state.Key(state.Key.Value.Local(state.Key.Local(ByteString.copyFrom(seed ++ hash))))
         }
       case _ =>
         appErr.raiseError(

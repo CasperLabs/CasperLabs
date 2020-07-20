@@ -4,15 +4,11 @@ import {AccessRights, URef} from "../../../../contract-as/assembly/uref";
 import {Key} from "../../../../contract-as/assembly/key";
 import {CLValue} from "../../../../contract-as/assembly/clvalue";
 
+const ARG_CONTRACT_UREF = "contract_uref";
 const REPLACEMENT_DATA = "bawitdaba";
 
 export function call(): void {
-  let urefBytes = CL.getArg(0);
-  if (urefBytes === null) {
-    Error.fromErrorCode(ErrorCode.MissingArgument).revert();
-    return;
-  }
-
+  let urefBytes = CL.getNamedArg(ARG_CONTRACT_UREF);
   let urefResult = URef.fromBytes(urefBytes);
   if (urefResult.hasError()) {
     Error.fromErrorCode(ErrorCode.InvalidArgument).revert();

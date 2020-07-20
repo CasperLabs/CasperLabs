@@ -5,6 +5,7 @@ use types::ProtocolVersion;
 
 use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
 
+#[derive(Debug)]
 pub struct ExecuteRequest {
     pub parent_state_hash: Blake2bHash,
     pub block_time: u64,

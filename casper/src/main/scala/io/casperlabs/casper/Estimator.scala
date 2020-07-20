@@ -11,14 +11,14 @@ import io.casperlabs.metrics.implicits._
 import io.casperlabs.models.{Message, Weight}
 import io.casperlabs.storage.dag.{DagLookup, DagRepresentation}
 import io.casperlabs.shared.{Log, Sorting}
-import Sorting.{byteStringOrdering, jRankOrdering}
+import Sorting.{byteStringOrdering, jRankOrdering, publicKeyHashOrdering}
 import io.casperlabs.casper.dag.DagOperations
 
 import scala.collection.immutable.Map
 
 object Estimator {
   type BlockHash = ByteString
-  type Validator = ByteString
+  type Validator = DagRepresentation.Validator
 
   import Weight._
 
@@ -37,9 +37,11 @@ object Estimator {
                          .traverse(dag.lookupUnsafe(_))
                          .map(_.filterNot(_.jRank < lfb.jRank)) // Filter out messages that are older than LFB.
                          .map(NonEmptyList.fromList(_).getOrElse(NonEmptyList.one(lfb)))
-      latestMessagesByV = latestMessages.groupBy(_.validatorId)(cats.Order.fromOrdering[ByteString])
-      lfbDistance       = latestMessages.toList.maxBy(_.jRank)(increasingOrder).jRank - lfb.jRank
-      _                 <- Metrics[F].record("lfbDistance", lfbDistance)
+      latestMessagesByV = latestMessages.groupBy(_.validatorId)(
+        cats.Order.fromOrdering[Validator]
+      )
+      lfbDistance = latestMessages.toList.maxBy(_.jRank)(increasingOrder).jRank - lfb.jRank
+      _           <- Metrics[F].record("lfbDistance", lfbDistance)
       scores <- lmdScoring(
                  dag,
                  lfb.messageHash,

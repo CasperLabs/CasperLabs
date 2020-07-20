@@ -9,7 +9,7 @@ use rand::{
 use engine_shared::{motes::Motes, newtypes::Blake2bHash, TypeMismatch};
 use engine_storage::global_state::CommitResult;
 use engine_wasm_prep::wasm_costs::WasmCosts;
-use types::{account::PublicKey, bytesrepr, Key, ProtocolVersion, U512};
+use types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, U512};
 
 use crate::engine_state::execution_effect::ExecutionEffect;
 
@@ -63,22 +63,22 @@ impl GenesisResult {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct GenesisAccount {
-    public_key: PublicKey,
+    account_hash: AccountHash,
     balance: Motes,
     bonded_amount: Motes,
 }
 
 impl GenesisAccount {
-    pub fn new(public_key: PublicKey, balance: Motes, bonded_amount: Motes) -> Self {
+    pub fn new(account_hash: AccountHash, balance: Motes, bonded_amount: Motes) -> Self {
         GenesisAccount {
-            public_key,
+            account_hash,
             balance,
             bonded_amount,
         }
     }
 
-    pub fn public_key(&self) -> PublicKey {
-        self.public_key
+    pub fn account_hash(&self) -> AccountHash {
+        self.account_hash
     }
 
     pub fn balance(&self) -> Motes {
@@ -92,7 +92,7 @@ impl GenesisAccount {
 
 impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
-        let public_key = PublicKey::ed25519_from(rng.gen());
+        let account_hash = AccountHash::new(rng.gen());
 
         let mut u512_array = [0u8; 64];
         rng.fill_bytes(u512_array.as_mut());
@@ -102,7 +102,7 @@ impl Distribution<GenesisAccount> for Standard {
         let bonded_amount = Motes::new(U512::from(u512_array.as_ref()));
 
         GenesisAccount {
-            public_key,
+            account_hash,
             balance,
             bonded_amount,
         }
@@ -222,12 +222,12 @@ impl ExecConfig {
         self.wasm_costs
     }
 
-    pub fn get_bonded_validators(&self) -> impl Iterator<Item = (PublicKey, Motes)> + '_ {
+    pub fn get_bonded_validators(&self) -> impl Iterator<Item = (AccountHash, Motes)> + '_ {
         let zero = Motes::zero();
         self.accounts.iter().filter_map(move |genesis_account| {
             if genesis_account.bonded_amount() > zero {
                 Some((
-                    genesis_account.public_key(),
+                    genesis_account.account_hash(),
                     genesis_account.bonded_amount(),
                 ))
             } else {

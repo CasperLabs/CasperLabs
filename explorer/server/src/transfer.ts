@@ -42,7 +42,7 @@ const args = Contracts.Transfer.args(accountPublicKey, options.amount);
 const deploy = transfer.deploy(
   args,
   options["payment-amount"],
-  contractKeys.publicKey,
+  Keys.Ed25519.publicKeyHash(contractKeys.publicKey),
   contractKeys
 );
 

@@ -1,5 +1,3 @@
-#![feature(drain_filter)]
-
 mod common;
 
 use lazy_static::lazy_static;

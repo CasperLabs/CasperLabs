@@ -2,14 +2,19 @@
 #![no_main]
 
 use contract::contract_api::{runtime, system};
+use types::{runtime_args, RuntimeArgs};
 
 const SET_REFUND_PURSE: &str = "set_refund_purse";
+const ARG_PURSE: &str = "purse";
 
 fn malicious_revenue_stealing_contract() {
-    let purse = system::create_purse();
-    let pos_pointer = system::get_proof_of_stake();
+    let contract_hash = system::get_proof_of_stake();
 
-    runtime::call_contract::<_, ()>(pos_pointer, (SET_REFUND_PURSE, purse));
+    let args = runtime_args! {
+        ARG_PURSE => system::create_purse(),
+    };
+
+    runtime::call_contract::<()>(contract_hash, SET_REFUND_PURSE, args);
 }
 
 #[no_mangle]

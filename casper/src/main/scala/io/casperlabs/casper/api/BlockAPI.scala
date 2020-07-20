@@ -311,18 +311,11 @@ object BlockAPI {
                     MonadThrowable[F]
                       .raiseError[cltype.Account](error(s"Expected cltype.Account, got $x"))
                 }
-      mintPublic <- MonadThrowable[F].fromOption(
-                     account.namedKeys.collectFirst {
-                       case (name, cltype.Key.URef(cltype.URef(address, _))) if name == "mint" =>
-                         address
-                     },
-                     error(s"Couldn't find mint contract in $account")
-                   )
       hash <- MonadThrowable[F].fromOption(
-               ByteArray32(Blake2b256.hash(account.mainPurse.address.bytes.toArray)),
-               error("Hash must 32 bytes long")
+               ByteArray32(account.mainPurse.address.bytes.toArray),
+               error("Address must 32 bytes long")
              )
-      balanceUref <- getState(cltype.Key.Local(mintPublic, hash)).flatMap {
+      balanceUref <- getState(cltype.Key.Hash(hash)).flatMap {
                       case cltype.StoredValue.CLValue(clValue) =>
                         cltype.CLValueInstance
                           .from(clValue)

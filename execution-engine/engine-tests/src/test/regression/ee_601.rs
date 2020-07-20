@@ -6,20 +6,25 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{CLValue, Key};
+use types::{runtime_args, CLValue, Key, RuntimeArgs};
+
+const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
 #[test]
 fn should_run_ee_601_pay_session_new_uref_collision() {
-    let genesis_public_key = DEFAULT_ACCOUNT_ADDR;
+    let genesis_account_hash = DEFAULT_ACCOUNT_ADDR;
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_deploy_hash([1; 32])
             .with_address(DEFAULT_ACCOUNT_ADDR)
-            .with_payment_code("ee_601_regression.wasm", (*DEFAULT_PAYMENT,))
-            .with_session_code("ee_601_regression.wasm", ())
-            .with_authorization_keys(&[genesis_public_key])
+            .with_payment_code(
+                "ee_601_regression.wasm",
+                runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT },
+            )
+            .with_session_code("ee_601_regression.wasm", RuntimeArgs::default())
+            .with_authorization_keys(&[genesis_account_hash])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()

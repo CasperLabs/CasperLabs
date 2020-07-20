@@ -1,6 +1,6 @@
 [package]
 name = "casperlabs-engine-storage"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["Michael Birch <birchmd@casperlabs.io>"]
 edition = "2018"
 description = "Storage component of the CasperLabs Wasm execution engine."
@@ -11,12 +11,12 @@ repository = "https://github.com/CasperLabs/CasperLabs/tree/master/execution-eng
 license-file = "../../LICENSE"
 
 [dependencies]
-engine-shared = { version = "0.6.1", path = "../engine-shared", package = "casperlabs-engine-shared" }
-engine-wasm-prep = { version = "0.5.1", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
+engine-shared = { version = "0.7.0", path = "../engine-shared", package = "casperlabs-engine-shared" }
+engine-wasm-prep = { version = "0.6.0", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
 failure = "0.1.6"
 lmdb = "0.8.0"
 parking_lot = "0.10.0"
-types = { version = "0.5.1", path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
+types = { version = "0.6.0", path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
 wasmi = "0.6.2"
 
 [dev-dependencies]
@@ -24,3 +24,13 @@ lazy_static = "1"
 proptest = "0.9.4"
 rand = "0.7.2"
 tempfile = "3"
+
+[features]
+no-unstable-features = [
+    "engine-shared/no-unstable-features",
+    "engine-wasm-prep/no-unstable-features",
+    "types/no-unstable-features"
+]
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

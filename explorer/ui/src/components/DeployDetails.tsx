@@ -5,7 +5,13 @@ import { DeployContainer } from '../containers/DeployContainer';
 import DataTable from './DataTable';
 import { DeployInfo } from 'casperlabs-grpc/io/casperlabs/casper/consensus/info_pb';
 import Pages from './Pages';
-import { RefreshableComponent, Icon, shortHash, FailIcon, SuccessIcon } from './Utils';
+import {
+  RefreshableComponent,
+  Icon,
+  shortHash,
+  FailIcon,
+  SuccessIcon
+} from './Utils';
 import ObservableValueMap from '../lib/ObservableValueMap';
 import { Balance, FinalityIcon } from './BlockDetails';
 import { decodeBase16, encodeBase16 } from 'casperlabs-sdk';
@@ -149,7 +155,10 @@ const deployAttrs: (deploy: DeployInfo) => Array<[string, any]> = (
   const header = deploy.getDeploy()!.getHeader()!;
   return [
     ['Deploy Hash', id],
-    ['Account Public Key', encodeBase16(header.getAccountPublicKey_asU8())],
+    [
+      'Account Public Key Hash',
+      encodeBase16(header.getAccountPublicKeyHash_asU8())
+    ],
     ['Timestamp', new Date(header.getTimestamp()).toISOString()],
     ['Gas Price', header.getGasPrice().toLocaleString()]
   ];

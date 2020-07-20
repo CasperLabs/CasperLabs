@@ -6,6 +6,7 @@ import * as nacl from 'tweetnacl-ts';
 import { ByteArray } from '../index';
 import { Args, BigIntValue, BytesValue } from './Args';
 import { ContractType, makeDeploy, signDeploy } from './DeployUtil';
+import { Ed25519 } from './Keys';
 
 // https://www.npmjs.com/package/tweetnacl-ts
 // https://github.com/dcposch/blakejs
@@ -24,9 +25,9 @@ export class Contract {
 
   constructor(sessionPath: string, paymentPath?: string) {
     this.sessionWasm = fs.readFileSync(sessionPath);
-    if(!paymentPath){
-      this.paymentWasm = Buffer.from("");
-    }else {
+    if (!paymentPath) {
+      this.paymentWasm = Buffer.from('');
+    } else {
       this.paymentWasm = fs.readFileSync(paymentPath);
     }
   }
@@ -34,10 +35,17 @@ export class Contract {
   public deploy(
     args: Deploy.Arg[],
     paymentAmount: bigint,
-    accountPublicKey: ByteArray,
-    signingKeyPair: nacl.SignKeyPair,
+    accountPublicKeyHash: ByteArray,
+    signingKeyPair: nacl.SignKeyPair
   ): Deploy {
-    const deploy = makeDeploy(args, ContractType.WASM, this.sessionWasm, this.paymentWasm, paymentAmount, accountPublicKey);
+    const deploy = makeDeploy(
+      args,
+      ContractType.WASM,
+      this.sessionWasm,
+      this.paymentWasm,
+      paymentAmount,
+      accountPublicKeyHash
+    );
     return signDeploy(deploy, signingKeyPair);
   }
 }
@@ -53,25 +61,25 @@ export class BoundContract {
     return this.contract.deploy(
       args,
       paymentAmount,
-      this.contractKeyPair.publicKey,
+      Ed25519.publicKeyHash(this.contractKeyPair.publicKey),
       this.contractKeyPair
     );
   }
 }
 
 export class Faucet {
-  public static args(accountPublicKey: ByteArray): Deploy.Arg[] {
-    return Args(['account', BytesValue(accountPublicKey)]);
+  public static args(accountPublicKeyHash: ByteArray): Deploy.Arg[] {
+    return Args(['account', BytesValue(accountPublicKeyHash)]);
   }
 }
 
 export class Transfer {
   public static args(
-    accountPublicKey: ByteArray,
+    accountPublicKeyHash: ByteArray,
     amount: bigint
   ): Deploy.Arg[] {
     return Args(
-      ['account', BytesValue(accountPublicKey)],
+      ['account', BytesValue(accountPublicKeyHash)],
       ['amount', BigIntValue(amount)]
     );
   }

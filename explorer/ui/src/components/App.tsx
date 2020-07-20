@@ -73,8 +73,10 @@ class GroupedMenuItem {
           data-target={`#${this.id}`}
           aria-controls={this.id}
         >
-          <i className={`nav-link-icon fas fa-${this.icon}`} />
-          {this.label}
+          <i className={`nav-link-icon fa fa-fw fa-${this.icon}`} />
+          <span className="nav-link-text">
+            {this.label}
+          </span>
           <div className="sidenav-collapse-arrow">
             <i className="fas fa-angle-down" />
           </div>
@@ -158,10 +160,11 @@ export default class App extends React.Component<AppProps, {}> {
       ).removeClass('show');
     });
 
-    // Force the toggled class to be removed when a collapsible nav link is clicked
-    $('.navbar-sidenav .nav-link-collapse').click(function (e) {
-      e.preventDefault();
-      $('body').removeClass('sidenav-toggled');
+    // Hide sidenav manually after clicking menu item in mobile view
+    // $("#navbarResponsive") is a responsive component which can only collapsed
+    // in mobile view.
+    $('.navbar-sidenav .nav-item').click(function (e) {
+      $("#navbarResponsive").collapse('hide');
     });
 
     // Prevent the content wrapper from scrolling when the fixed side navigation hovered over
@@ -313,8 +316,14 @@ function useQuery() {
   return new URLSearchParams(useLocation().search);
 }
 
+// The white list of hostname that enable GA.
+const HOSTNAME_WHITE_LIST = ['testnet-explorer.casperlabs.io', 'clarity.casperlabs.io'];
 
-ReactGA.initialize("UA-133833104-1");
+const ENABLE_GA = HOSTNAME_WHITE_LIST.includes(window.location.hostname);
+
+if (ENABLE_GA) {
+  ReactGA.initialize("UA-133833104-1");
+}
 
 // the hook to send pageView to GA.
 function usePageViews() {
@@ -322,7 +331,9 @@ function usePageViews() {
 
   useEffect(
     () => {
-      ReactGA.pageview(location.pathname);
+      if (ENABLE_GA) {
+        ReactGA.pageview(location.pathname);
+      }
     },
     [location]
   );

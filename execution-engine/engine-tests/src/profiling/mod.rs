@@ -3,7 +3,7 @@ use std::{env, path::PathBuf, str::FromStr};
 use clap::{Arg, ArgMatches};
 
 use engine_test_support::DEFAULT_ACCOUNT_INITIAL_BALANCE;
-use types::{account::PublicKey, U512};
+use types::{account::AccountHash, U512};
 
 const DATA_DIR_ARG_NAME: &str = "data-dir";
 const DATA_DIR_ARG_SHORT: &str = "d";
@@ -12,9 +12,9 @@ const DATA_DIR_ARG_VALUE_NAME: &str = "PATH";
 const DATA_DIR_ARG_HELP: &str = "Directory in which persistent data is stored [default: current \
                                  working directory]";
 
-const ACCOUNT_1_ADDR: PublicKey = PublicKey::ed25519_from([1u8; 32]);
+const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 pub const ACCOUNT_1_INITIAL_AMOUNT: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE - 1_000_000_000;
-const ACCOUNT_2_ADDR: PublicKey = PublicKey::ed25519_from([2u8; 32]);
+const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
 
 pub fn exe_name() -> String {
     env::current_exe()
@@ -52,7 +52,7 @@ pub fn parse_count(count_as_str: &str) -> usize {
     count
 }
 
-pub fn account_1_public_key() -> PublicKey {
+pub fn account_1_account_hash() -> AccountHash {
     ACCOUNT_1_ADDR
 }
 
@@ -60,6 +60,6 @@ pub fn account_1_initial_amount() -> U512 {
     ACCOUNT_1_INITIAL_AMOUNT.into()
 }
 
-pub fn account_2_public_key() -> PublicKey {
+pub fn account_2_account_hash() -> AccountHash {
     ACCOUNT_2_ADDR
 }

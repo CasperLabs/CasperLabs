@@ -12,7 +12,7 @@ import io.casperlabs.casper.consensus.{Block, BlockSummary, Era}
 import io.casperlabs.casper.dag.DagOperations
 import io.casperlabs.casper.validation.Errors.ErrorMessageWrapper
 import io.casperlabs.catscontrib.{MakeSemaphore, MonadThrowable}
-import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyBS}
+import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyBS, PublicKeyHash, PublicKeyHashBS}
 import io.casperlabs.models.Message
 import io.casperlabs.metrics.implicits._
 import io.casperlabs.metrics.Metrics
@@ -62,7 +62,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
     // we must protect the fork choice _and_ the message production with a common semaphore.
     // Also make sure that we only add one message from another validator at a time, so as
     // not to miss any equivocations that may happen if they arrive at the same time.
-    validatorSemaphoreMap: SemaphoreMap[F, PublicKeyBS],
+    validatorSemaphoreMap: SemaphoreMap[F, PublicKeyHashBS],
     // Indicate whether the initial syncing mechanism that runs when the node is started
     // is still ongoing, or it has concluded and the node is caught up with its peers.
     // Before that, responding to messages risks creating an equivocation, in case some
@@ -85,6 +85,9 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
   val endTick   = Ticks(era.endTick)
   val start     = conf.toInstant(startTick)
   val end       = conf.toInstant(endTick)
+
+  private val bondedValidators: Set[PublicKeyHashBS] =
+    era.bonds.map(_.validatorPublicKeyHash).map(PublicKeyHash).toSet
 
   val isBonded = maybeMessageProducer.isDefined
 
@@ -499,7 +502,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
 
   /** Pick a time during the round to send the omega message. */
   private def chooseOmegaTick(
-      validatorId: PublicKeyBS,
+      validatorId: PublicKeyHashBS,
       roundStart: Ticks,
       roundEnd: Ticks
   ): Ticks = {
@@ -537,7 +540,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
       ) >>
       check(
         "The validator is not bonded in the era.",
-        era.bonds.find(_.validatorPublicKey == message.validatorId).isEmpty
+        !bondedValidators(message.validatorId)
       ) >> {
       message match {
         case b: Message.Block =>
@@ -660,7 +663,7 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
         // Alternatively `StartRound` could just return a `CreateLambdaMessage`,
         // a `CreateOmegaMessage` and another `StartRound` to make them all
         // independently scheduleable.
-        def agenda(validatorId: PublicKeyBS) =
+        def agenda(validatorId: PublicKeyHashBS) =
           for {
             now                           <- currentTick
             (currentRoundId, nextRoundId) <- roundBoundariesAt(now)
@@ -743,7 +746,9 @@ class EraRuntime[F[_]: Sync: Clock: Metrics: Log: EraStorage: FinalityStorageRea
               ),
             _ => ().pure[F]
           )
-      semaphore      <- validatorSemaphoreMap.getOrAdd(PublicKey(block.getHeader.validatorPublicKey))
+      semaphore <- validatorSemaphoreMap.getOrAdd(
+                    PublicKeyHash(block.getHeader.validatorPublicKeyHash)
+                  )
       isBookingBlock <- message.isBookingBlock
       _              <- messageExecutor.validateAndAdd(semaphore, block, isBookingBlock)
     } yield Validated(message)
@@ -783,12 +788,13 @@ object EraRuntime {
       leaderSequencer: LeaderSequencer = LeaderSequencer
   ): F[EraRuntime[F]] =
     for {
-      leaderFunction   <- leaderSequencer.leaderFunction[F](era)
-      omegaFunction    <- leaderSequencer.omegaFunction[F](era)
-      roundExponentRef <- Ref.of[F, Int](initRoundExponent)
-      dag              <- DagStorage[F].getRepresentation
-      semaphoreMap     <- SemaphoreMap[F, PublicKeyBS](1)
-      isOrphanEra      <- isOrphanEra[F](era.keyBlockHash)
+      leaderFunction      <- leaderSequencer.leaderFunction[F](era)
+      omegaFunction       <- leaderSequencer.omegaFunction[F](era)
+      roundExponentRef    <- Ref.of[F, Int](initRoundExponent)
+      dag                 <- DagStorage[F].getRepresentation
+      semaphoreMap        <- SemaphoreMap[F, PublicKeyHashBS](1)
+      isOrphanEra         <- isOrphanEra[F](era.keyBlockHash)
+      isKeyBlockFinalized <- FinalityStorageReader[F].isFinalized(era.keyBlockHash)
     } yield {
       new EraRuntime[F](
         conf,
@@ -799,7 +805,9 @@ object EraRuntime {
         // Whether the validator is bonded depends on the booking block. Only bonded validators
         // have to produce blocks and ballots in the era.
         maybeMessageProducer.filter { mp =>
-          !isOrphanEra && era.bonds.exists(b => b.validatorPublicKey == mp.validatorId)
+          !isOrphanEra &&
+          isKeyBlockFinalized &&
+          era.bonds.exists(b => b.validatorPublicKeyHash == mp.validatorId)
         },
         semaphoreMap,
         isSynced,
@@ -873,7 +881,7 @@ object EraRuntime {
       message: Message
   ): F[Boolean] =
     message.justifications
-      .filter(_.validatorPublicKey == message.validatorId)
+      .filter(_.validatorPublicKeyHash == message.validatorId)
       .toList
       .findM[F] { j =>
         dag.lookupUnsafe(j.latestBlockHash).map(isSameRoundAs(message))

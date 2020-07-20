@@ -1,19 +1,11 @@
-use lazy_static::lazy_static;
-
-use contract::args_parser::ArgsParser;
 use engine_shared::stored_value::StoredValue;
 use engine_storage::global_state::StateReader;
 use standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment};
-use types::{bytesrepr::ToBytes, system_contract_errors, ApiError, Key, URef, U512};
+use types::{system_contract_errors, ApiError, Key, RuntimeArgs, URef, U512};
 
 use crate::{execution, runtime::Runtime};
 
-lazy_static! {
-    static ref SERIALIZED_GET_PAYMENT_PURSE: Vec<u8> = ArgsParser::parse(("get_payment_purse",))
-        .expect("args should convert to `Vec<CLValue>`")
-        .into_bytes()
-        .expect("args should serialize");
-}
+pub const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
 impl<'a, R> AccountProvider for Runtime<'a, R>
 where
@@ -38,8 +30,8 @@ where
         target: URef,
         amount: U512,
     ) -> Result<(), ApiError> {
-        let mint_contract_key = Key::from(self.get_mint_contract_uref());
-        self.mint_transfer(mint_contract_key, source, target, amount)
+        let mint_contract_hash = self.get_mint_contract();
+        self.mint_transfer(mint_contract_hash, source, target, amount)
             .map_err(|error| match error {
                 execution::Error::SystemContract(system_contract_errors::Error::Mint(
                     mint_error,
@@ -55,10 +47,14 @@ where
     R::Error: Into<execution::Error>,
 {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
-        let pos_contract_key = Key::from(self.get_pos_contract_uref());
+        let pos_contract_hash = self.get_pos_contract();
 
         let cl_value = self
-            .call_contract(pos_contract_key, SERIALIZED_GET_PAYMENT_PURSE.clone())
+            .call_contract(
+                pos_contract_hash,
+                METHOD_GET_PAYMENT_PURSE,
+                RuntimeArgs::new(),
+            )
             .map_err(|_| {
                 ApiError::ProofOfStake(
                     system_contract_errors::pos::Error::PaymentPurseNotFound as u8,

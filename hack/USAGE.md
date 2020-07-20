@@ -69,7 +69,7 @@ pub extern "C" fn counter_ext() {
 
     // The first (zeroth) argument passed to this function is the method name
     // (i.e. action to perform during this call).
-    let method_name: String = get_arg(0);
+    let method_name: String = get_named_arg("method_name");
     match method_name.as_str() {
         "inc" => add(i_key, 1), // increment the state variable by 1
         "get" => {

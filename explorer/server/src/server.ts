@@ -1,4 +1,4 @@
-import { Contracts, Keys } from "casperlabs-sdk";
+import { CasperService, Contracts, Keys } from "casperlabs-sdk";
 import dotenv from "dotenv";
 import express from "express";
 import jwt from "express-jwt";
@@ -9,8 +9,9 @@ import path from "path";
 import { decodeBase64 } from "tweetnacl-util";
 // TODO: Everything in config.json could come from env vars.
 import config from "./config.json";
-import { Faucet } from "./lib/Contracts";
 import DeployService from "./services/DeployService";
+import { StoredFaucetService } from './StoredFaucetService';
+import { NodeHttpTransport } from '@improbable-eng/grpc-web-node-http-transport';
 
 // https://auth0.com/docs/quickstart/spa/vanillajs/02-calling-an-api
 // https://github.com/auth0/express-jwt
@@ -28,7 +29,7 @@ const contractKeys =
     process.env.FAUCET_ACCOUNT_PRIVATE_KEY_PATH!);
 
 // Faucet contract and deploy factory.
-const faucet = new Contracts.BoundContract(
+const storedFaucet = new Contracts.BoundContract(
   new Contracts.Contract(
     process.env.FAUCET_CONTRACT_PATH!
   ),
@@ -47,6 +48,8 @@ const nodeUrls = urls.split(';')
 
 // gRPC client to the node.
 const deployService = new DeployService(nodeUrls);
+const casperService = new CasperService(nodeUrls[0], NodeHttpTransport());
+const storedFaucetService = new StoredFaucetService(storedFaucet,contractKeys, paymentAmount, transferAmount, deployService, casperService);
 
 const app = express();
 
@@ -118,21 +121,19 @@ app.use(express.json());
 app.post("/api/faucet", checkJwt, (req, res) => {
   // express-jwt put the token in res.user
   // const userId = (req as any).user.sub;
-  const accountPublicKeyBase64 = req.body.accountPublicKeyBase64 || "";
-  if (accountPublicKeyBase64 === "") {
-    throw Error("The 'accountPublicKeyBase64' is missing.");
+  const accountPublicKeyHashBase64 = req.body.accountPublicKeyHashBase64 || "";
+  if (accountPublicKeyHashBase64 === "") {
+    throw Error("The 'accountPublicKeyHashBase64' is missing.");
   }
 
   // Prepare the signed deploy.
-  const accountPublicKey = decodeBase64(accountPublicKeyBase64);
-  const deploy = faucet.deploy(Faucet.args(accountPublicKey, transferAmount), paymentAmount);
+  const accountPublicKeyHash = decodeBase64(accountPublicKeyHashBase64);
 
   // Send the deploy to the node and return the deploy hash to the browser.
-  deployService
-    .deploy(deploy)
-    .then(() => {
+  storedFaucetService.callStoredFaucet(accountPublicKeyHash)
+    .then((deployHash) => {
       const response = {
-        deployHashBase16: Buffer.from(deploy.getDeployHash_asU8()).toString("hex")
+        deployHashBase16: Buffer.from(deployHash).toString('hex')
       };
       res.send(response);
     })

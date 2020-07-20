@@ -1,6 +1,6 @@
 [package]
 name = "casperlabs-engine-shared"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
 edition = "2018"
 description = "Library of shared types for use by the various CasperLabs execution engine crates."
@@ -14,7 +14,7 @@ license-file = "../../LICENSE"
 base16 = "0.2.1"
 blake2 = "0.8.1"
 chrono = "0.4.10"
-engine-wasm-prep = { version = "0.5.1", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
+engine-wasm-prep = { version = "0.6.0", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
 hostname = "0.3.0"
 lazy_static = "1.4.0"
 libc = "0.2.66"
@@ -24,9 +24,12 @@ parity-wasm = "0.41.0"
 proptest = "0.9.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-types = { version = "0.5.1", path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
+types = { version = "0.6.0", path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 wabt = "0.9.2"
+
+[features]
+no-unstable-features = ["engine-wasm-prep/no-unstable-features", "types/no-unstable-features"]
 
 [[test]]
 name = "trace-level-metrics-disabled"
@@ -55,3 +58,6 @@ path = "tests/logging/logging_disabled_metrics_enabled.rs"
 [[test]]
 name = "logging-disabled-metrics-disabled"
 path = "tests/logging/logging_disabled_metrics_disabled.rs"
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

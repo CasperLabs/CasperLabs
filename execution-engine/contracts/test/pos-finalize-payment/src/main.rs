@@ -5,51 +5,63 @@ use contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{account::PublicKey, ApiError, ContractRef, Key, URef, U512};
+use types::{account::AccountHash, runtime_args, ContractHash, RuntimeArgs, URef, U512};
 
-fn set_refund_purse(pos: &ContractRef, p: &URef) {
-    runtime::call_contract(pos.clone(), ("set_refund_purse", *p))
+pub const ARG_AMOUNT: &str = "amount";
+pub const ARG_AMOUNT_SPENT: &str = "amount_spent";
+pub const ARG_REFUND_FLAG: &str = "refund";
+pub const ARG_PURSE: &str = "purse";
+pub const ARG_ACCOUNT_KEY: &str = "account";
+
+fn set_refund_purse(contract_hash: ContractHash, purse: URef) {
+    runtime::call_contract(
+        contract_hash,
+        "set_refund_purse",
+        runtime_args! {
+            ARG_PURSE => purse,
+        },
+    )
 }
 
-fn get_payment_purse(pos: &ContractRef) -> URef {
-    runtime::call_contract(pos.clone(), ("get_payment_purse",))
+fn get_payment_purse(contract_hash: ContractHash) -> URef {
+    runtime::call_contract(contract_hash, "get_payment_purse", runtime_args! {})
 }
 
-fn submit_payment(pos: &ContractRef, amount: U512) {
-    let payment_purse = get_payment_purse(pos);
+fn submit_payment(contract_hash: ContractHash, amount: U512) {
+    let payment_purse = get_payment_purse(contract_hash);
     let main_purse = account::get_main_purse();
     system::transfer_from_purse_to_purse(main_purse, payment_purse, amount).unwrap_or_revert()
 }
 
-fn finalize_payment(pos: &ContractRef, amount_spent: U512, account: PublicKey) {
-    runtime::call_contract(pos.clone(), ("finalize_payment", amount_spent, account))
+fn finalize_payment(contract_hash: ContractHash, amount_spent: U512, account: AccountHash) {
+    runtime::call_contract(
+        contract_hash,
+        "finalize_payment",
+        runtime_args! {
+            ARG_AMOUNT => amount_spent,
+            ARG_ACCOUNT_KEY => account,
+        },
+    )
 }
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let pos_pointer = system::get_proof_of_stake();
+    let contract_hash = system::get_proof_of_stake();
 
-    let payment_amount: U512 = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let refund_purse_flag: u8 = runtime::get_arg(1)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let maybe_amount_spent: Option<U512> = runtime::get_arg(2)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let maybe_account: Option<PublicKey> = runtime::get_arg(3)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let payment_amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let refund_purse_flag: u8 = runtime::get_named_arg(ARG_REFUND_FLAG);
+    let maybe_amount_spent: Option<U512> = runtime::get_named_arg(ARG_AMOUNT_SPENT);
+    let maybe_account: Option<AccountHash> = runtime::get_named_arg(ARG_ACCOUNT_KEY);
 
-    submit_payment(&pos_pointer, payment_amount);
+    submit_payment(contract_hash, payment_amount);
+
     if refund_purse_flag != 0 {
         let refund_purse = system::create_purse();
-        runtime::put_key("local_refund_purse", Key::URef(refund_purse));
-        set_refund_purse(&pos_pointer, &refund_purse);
+        runtime::put_key("local_refund_purse", refund_purse.into());
+        set_refund_purse(contract_hash, refund_purse);
     }
 
     if let (Some(amount_spent), Some(account)) = (maybe_amount_spent, maybe_account) {
-        finalize_payment(&pos_pointer, amount_spent, account);
+        finalize_payment(contract_hash, amount_spent, account);
     }
 }

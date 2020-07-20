@@ -8,14 +8,15 @@ use engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use types::{
-    account::{PublicKey, Weight},
-    U512,
+    account::{AccountHash, Weight},
+    runtime_args, RuntimeArgs, U512,
 };
 
 const CONTRACT_ADD_UPDATE_ASSOCIATED_KEY: &str = "add_update_associated_key.wasm";
 const CONTRACT_REMOVE_ASSOCIATED_KEY: &str = "remove_associated_key.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
-const ACCOUNT_1_ADDR: PublicKey = PublicKey::ed25519_from([1u8; 32]);
+const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
+const ARG_ACCOUNT: &str = "account";
 
 lazy_static! {
     static ref ACCOUNT_1_INITIAL_FUND: U512 = *DEFAULT_PAYMENT * 10;
@@ -31,13 +32,13 @@ fn should_manage_associated_key() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        (ACCOUNT_1_ADDR, *ACCOUNT_1_INITIAL_FUND),
+        runtime_args! { "target" => ACCOUNT_1_ADDR, "amount" => *ACCOUNT_1_INITIAL_FUND },
     )
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_ADD_UPDATE_ASSOCIATED_KEY,
-        (DEFAULT_ACCOUNT_ADDR,),
+        runtime_args! { "account" => DEFAULT_ACCOUNT_ADDR, },
     )
     .build();
 
@@ -65,7 +66,7 @@ fn should_manage_associated_key() {
     let exec_request_3 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_REMOVE_ASSOCIATED_KEY,
-        (DEFAULT_ACCOUNT_ADDR,),
+        runtime_args! { ARG_ACCOUNT => DEFAULT_ACCOUNT_ADDR, },
     )
     .build();
 

@@ -214,7 +214,7 @@ lazy val models = (project in file("models"))
   )
   .dependsOn(crypto % "compile->compile;test->test")
 
-val nodeAndClientVersion = "0.19.1"
+val nodeAndClientVersion = "0.20.0"
 
 lazy val node = (project in file("node"))
   .settings(commonSettings: _*)

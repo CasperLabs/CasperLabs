@@ -1,28 +1,20 @@
-use contract::args_parser::ArgsParser;
 use engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{ApiError, U512};
-
-#[derive(Debug)]
-#[repr(u16)]
-enum GetArgContractError {
-    MissingArgument0 = 0,
-    MissingArgument1,
-    InvalidArgument0,
-    InvalidArgument1,
-}
+use types::{runtime_args, ApiError, RuntimeArgs, U512};
 
 const CONTRACT_GET_ARG: &str = "get_arg.wasm";
 const ARG0_VALUE: &str = "Hello, world!";
 const ARG1_VALUE: u64 = 42;
+const ARG_VALUE0: &str = "value0";
+const ARG_VALUE1: &str = "value1";
 
 /// Calls get_arg contract and returns Ok(()) in case no error, or String which is the error message
 /// returned by the engine
-fn call_get_arg(args: impl ArgsParser) -> Result<(), String> {
+fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
     let exec_request =
         ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, CONTRACT_GET_ARG, args).build();
     let result = InMemoryWasmTestBuilder::default()
@@ -48,43 +40,46 @@ fn call_get_arg(args: impl ArgsParser) -> Result<(), String> {
 #[ignore]
 #[test]
 fn should_use_passed_argument() {
-    call_get_arg((String::from(ARG0_VALUE), U512::from(ARG1_VALUE)))
-        .expect("Should successfuly call get_arg with 2 valid args");
+    let args = runtime_args! {
+        ARG_VALUE0 => ARG0_VALUE,
+        ARG_VALUE1 => U512::from(ARG1_VALUE),
+    };
+    call_get_arg(args).expect("Should successfuly call get_arg with 2 valid args");
 }
 
 #[ignore]
 #[test]
 fn should_revert_with_missing_arg() {
-    assert!(call_get_arg(())
+    assert!(call_get_arg(RuntimeArgs::default())
         .expect_err("should fail")
-        .contains(&format!(
-            "{:?}",
-            ApiError::User(GetArgContractError::MissingArgument0 as u16),
-        )));
-    assert!(call_get_arg((String::from(ARG0_VALUE),))
-        .expect_err("should fail")
-        .contains(&format!(
-            "{:?}",
-            ApiError::User(GetArgContractError::MissingArgument1 as u16),
-        )));
+        .contains(&format!("{:?}", ApiError::MissingArgument),));
+    assert!(
+        call_get_arg(runtime_args! { ARG_VALUE0 => String::from(ARG0_VALUE) })
+            .expect_err("should fail")
+            .contains(&format!("{:?}", ApiError::MissingArgument))
+    );
 }
 
 #[ignore]
 #[test]
 fn should_revert_with_invalid_argument() {
-    assert!(call_get_arg((U512::from(123),))
-        .expect_err("should fail")
-        .contains(&format!(
-            "{:?}",
-            ApiError::User(GetArgContractError::InvalidArgument0 as u16)
-        )));
-    assert!(call_get_arg((
-        String::from(ARG0_VALUE),
-        String::from("this is expected to be U512")
-    ))
-    .expect_err("should fail")
-    .contains(&format!(
-        "{:?}",
-        ApiError::User(GetArgContractError::InvalidArgument1 as u16),
-    )));
+    let res1 =
+        call_get_arg(runtime_args! {ARG_VALUE0 =>  U512::from(123)}).expect_err("should fail");
+    assert!(
+        res1.contains(&format!("{:?}", ApiError::InvalidArgument,)),
+        "res1: {:?}",
+        res1
+    );
+
+    let res2 = call_get_arg(runtime_args! {
+        ARG_VALUE0 => String::from(ARG0_VALUE),
+        ARG_VALUE1 => String::from("this is expected to be U512"),
+    })
+    .expect_err("should fail");
+
+    assert!(
+        res2.contains(&format!("{:?}", ApiError::InvalidArgument,)),
+        "res2:{:?}",
+        res2
+    );
 }

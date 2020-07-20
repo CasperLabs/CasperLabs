@@ -16,11 +16,9 @@ const MAIN_PURSE_BALANCE = "main_purse_balance";
 const SUCCESS_MESSAGE = "Ok(())";
 const TRANSFER_ERROR_MESSAGE = "Err(ApiError::Transfer [14])";
 
-enum Args {
-    SourcePurse = 0,
-    DestinationPurse = 1,
-    Amount = 2,
-}
+const ARG_SOURCE = "source";
+const ARG_TARGET = "target";
+const ARG_AMOUNT = "amount";
 
 enum CustomError {
     MissingSourcePurseArg = 1,
@@ -43,11 +41,7 @@ export function call(): void {
     const mainPurse = getMainPurse();
     const mainPurseKey = Key.fromURef(mainPurse);
     putKey(PURSE_MAIN, mainPurseKey);
-    const sourcePurseKeyNameArg = CL.getArg(Args.SourcePurse);
-    if (sourcePurseKeyNameArg === null) {
-        Error.fromUserError(<u16>CustomError.MissingSourcePurseArg).revert();
-        return;
-    }
+    const sourcePurseKeyNameArg = CL.getNamedArg(ARG_SOURCE);
     const maybeSourcePurseKeyName = fromBytesString(sourcePurseKeyNameArg);
     if(maybeSourcePurseKeyName.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidSourcePurseArg).revert();
@@ -65,7 +59,7 @@ export function call(): void {
     }
     const sourcePurse = sourcePurseKey.toURef();
 
-    const destinationPurseKeyNameArg = CL.getArg(Args.DestinationPurse);
+    const destinationPurseKeyNameArg = CL.getNamedArg(ARG_TARGET);
     if (destinationPurseKeyNameArg === null) {
         Error.fromUserError(<u16>CustomError.MissingDestinationPurseArg).revert();
         return;
@@ -99,11 +93,7 @@ export function call(): void {
         return;
     }
 
-    const amountArg = CL.getArg(Args.Amount);
-    if (amountArg === null) {
-        Error.fromUserError(<u16>CustomError.MissingAmountArg).revert();
-        return;
-    }
+    const amountArg = CL.getNamedArg(ARG_AMOUNT);
     const amountResult = U512.fromBytes(amountArg);
     if (amountResult.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidAmountArg).revert();
@@ -113,7 +103,7 @@ export function call(): void {
 
     const result = transferFromPurseToPurse(<URef>sourcePurse, <URef>destinationPurse, amount);
     let message = SUCCESS_MESSAGE;
-    if (result !== null && result > 0){
+    if (result > 0){
         message = TRANSFER_ERROR_MESSAGE;
     }
     const resultKey = Key.create(CLValue.fromString(message));

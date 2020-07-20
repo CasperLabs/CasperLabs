@@ -1,5 +1,5 @@
 import { Pair } from "./pair";
-import { typedToArray } from "./utils";
+import { typedToArray, encodeUTF8 } from "./utils";
 import { ErrorCode, Error as StdError } from "./error";
 
 /**
@@ -57,7 +57,7 @@ export class Result<T> {
      * @param error Error value
      * @param position Position of input stream
      */
-    constructor(public ref: Ref<T> | null, public error: Error, public position: usize) {}
+    constructor(public ref: Ref<T> | null, public error: Error, public position: u32) {}
 
     /**
      * Assumes that reference wrapper contains a value and then returns it
@@ -205,16 +205,16 @@ export function toBytesPair(key: u8[], value: u8[]): u8[] {
 /**
  * Serializes a map into an array of bytes.
  *
- * @param pairs Array of serialized key-value pairs.
+ * @param map A map container.
+ * @param serializeKey A function that will serialize given key.
+ * @param serializeValue A function that will serialize given value.
  */
-export function toBytesMap(pairs: u8[][]): u8[] {
-    // https://github.com/AssemblyScript/docs/blob/master/standard-library/map.md#methods
-    // Gets the keys contained in this map as an array, in insertion order. This is preliminary while iterators are not supported.
-    // See https://github.com/AssemblyScript/assemblyscript/issues/166
-    var bytes = toBytesU32(<u32>pairs.length);
-    for (var i = 0; i < pairs.length; i++) {
-        var pairBytes = pairs[i];
-        bytes = bytes.concat(pairBytes);
+export function toBytesMap<K, V>(vecOfPairs: Array<Pair<K, V>>, serializeKey: (key: K) => Array<u8>, serializeValue: (value: V) => Array<u8>): Array<u8> {
+    const len = vecOfPairs.length;
+    var bytes = toBytesU32(<u32>len);
+    for (var i = 0; i < len; i++) {
+        bytes = bytes.concat(serializeKey(vecOfPairs[i].first));
+        bytes = bytes.concat(serializeValue(vecOfPairs[i].second));
     }
     return bytes;
 }
@@ -280,12 +280,7 @@ export function fromBytesMap<K, V>(
  */
 export function toBytesString(s: String): u8[] {
     let bytes = toBytesU32(<u32>s.length);
-    for (let i = 0; i < s.length; i++) {
-        let charCode = s.charCodeAt(i);
-        // Assumes ascii encoding (i.e. charCode < 0x80)
-        bytes.push(<u8>charCode);
-    }
-    return bytes;
+    return bytes.concat(typedToArray(encodeUTF8(s)));
 }
 
 /**
@@ -343,10 +338,11 @@ export function fromBytesArrayU8(bytes: Uint8Array): Result<Array<u8>> {
 /**
  * Serializes a vector of values of type `T` into an array of bytes.
  */
-export function toBytesVecT<T>(ts: T[]): Array<u8> {
-    let bytes = toBytesU32(<u32>ts.length);
+export function toBytesVecT<T>(ts: Array<T>, encodeItem: (item: T) => Array<u8>): Array<u8> {
+    var bytes = toBytesU32(<u32>ts.length);
     for (let i = 0; i < ts.length; i++) {
-        bytes = bytes.concat(ts[i].toBytes());
+        var itemBytes = encodeItem(ts[i]);
+        bytes = bytes.concat(itemBytes);
     }
     return bytes;
 }

@@ -23,21 +23,27 @@ object DeployOps extends ArbitraryConsensus {
     // Clears previous signatures and adds a new one.
     def signSingle: Deploy = {
       val (sk, pk) = Ed25519.newKeyPair
-      DeployImplicits.DeployOps(deploy.withApprovals(Seq.empty)).sign(sk, pk)
+      DeployImplicits.DeployOps(deploy.withApprovals(Seq.empty)).approve(Ed25519, sk, pk)
     }
 
     // Adds a new signature to already existing ones.
     def addSignature: Deploy = {
       val (sk, pk) = Ed25519.newKeyPair
-      DeployImplicits.DeployOps(deploy).sign(sk, pk)
+      DeployImplicits.DeployOps(deploy).approve(Ed25519, sk, pk)
     }
     def withSessionCode(bytes: ByteString): Deploy =
       rehash(
-        deploy.withBody(deploy.getBody.withSession(Deploy.Code().withWasm(bytes)))
+        deploy.withBody(
+          deploy.getBody
+            .withSession(Deploy.Code().withWasmContract(Deploy.Code.WasmContract(bytes)))
+        )
       )
     def withPaymentCode(bytes: ByteString): Deploy =
       rehash(
-        deploy.withBody(deploy.getBody.withPayment(Deploy.Code().withWasm(bytes)))
+        deploy.withBody(
+          deploy.getBody
+            .withPayment(Deploy.Code().withWasmContract(Deploy.Code.WasmContract(bytes)))
+        )
       )
     def withTimestamp(timestamp: Long): Deploy =
       rehash(

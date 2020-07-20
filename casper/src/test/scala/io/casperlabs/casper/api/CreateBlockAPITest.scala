@@ -25,7 +25,8 @@ import io.casperlabs.casper.util._
 import io.casperlabs.casper.validation.{NCBValidationImpl, Validation}
 import io.casperlabs.catscontrib.TaskContrib._
 import io.casperlabs.crypto.codec.Base16
-import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
+import io.casperlabs.crypto.signatures.SignatureAlgorithm.{Ed25519, Secp256k1}
+import io.casperlabs.crypto.Keys
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.models.Weight
 import io.casperlabs.p2p.EffectsTestInstances._
@@ -41,6 +42,7 @@ import io.casperlabs.casper.helper.DeployOps._
 import io.casperlabs.comm.ServiceError.OutOfRange
 import io.casperlabs.comm.gossiping.relaying.NoOpsDeployRelaying
 import io.casperlabs.shared.LogStub
+import io.casperlabs.models.DeployImplicits._
 
 import scala.concurrent.duration._
 
@@ -62,7 +64,13 @@ class CreateBlockAPITest
   implicit val validationEff  = new NCBValidationImpl[Task]
   implicit val deployRelaying = new NoOpsDeployRelaying[Task]
 
-  private val (validatorKeys, validators)             = (1 to 4).map(_ => Ed25519.newKeyPair).unzip
+  private val (validatorKeys, validators) = {
+    val validatorIds = (1 to 4) map { _ =>
+      val (sk, pk) = Ed25519.newKeyPair
+      ValidatorIdentity(pk, sk, Ed25519)
+    }
+    validatorIds -> validatorIds.map(_.publicKeyHashBS)
+  }
   private val bonds                                   = createBonds(validators)
   private val BlockMsgWithTransform(Some(genesis), _) = createGenesis(bonds)
 
@@ -208,6 +216,51 @@ class CreateBlockAPITest
         Left(ex)     = result
         _            = ex.getMessage should include("No new deploys")
       } yield result).unsafeRunSync
+    } finally {
+      node.tearDown().unsafeRunSync
+    }
+  }
+
+  it should "accept deploys signed by Secp256k1" in {
+    val node = standaloneEff(genesis, validatorKeys.head)
+
+    implicit val db = node.deployBuffer
+
+    try {
+      val test = for {
+        deploy0  <- ProtoUtil.basicDeploy[Task]()
+        (sk, pk) = Secp256k1.newKeyPair
+        deploy1  = deploy0.approve(Secp256k1, sk, pk)
+        result   <- BlockAPI.deploy[Task](deploy1).attempt
+      } yield {
+        result shouldBe Right(())
+      }
+
+      test.unsafeRunSync
+    } finally {
+      node.tearDown().unsafeRunSync
+    }
+  }
+
+  it should "reject incorrect signature" in {
+    val node = standaloneEff(genesis, validatorKeys.head)
+
+    implicit val db = node.deployBuffer
+
+    try {
+      val test = for {
+        deploy0  <- ProtoUtil.basicDeploy[Task]()
+        (sk, pk) = Secp256k1.newKeyPair
+        deploy1  = deploy0.approve(Secp256k1, sk, Keys.PublicKey(Array[Byte](1, 2, 3)))
+        result   <- BlockAPI.deploy[Task](deploy1).attempt
+      } yield {
+        result match {
+          case Left(ex) => ex.getMessage should include("Invalid deploy signature.")
+          case other    => fail(s"Expected failed signature: $other")
+        }
+      }
+
+      test.unsafeRunSync
     } finally {
       node.tearDown().unsafeRunSync
     }

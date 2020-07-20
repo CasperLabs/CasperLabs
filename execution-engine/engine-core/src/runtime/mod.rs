@@ -2,12 +2,12 @@ mod args;
 mod externals;
 mod mint_internal;
 mod proof_of_stake_internal;
-mod scoped_timer;
+mod scoped_instrumenter;
 mod standard_payment_internal;
 
 use std::{
     cmp,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryFrom,
     iter::IntoIterator,
 };
@@ -17,28 +17,32 @@ use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind};
 
 use ::mint::Mint;
-use contract::args_parser::ArgsParser;
-use engine_shared::{account::Account, contract::Contract, gas::Gas, stored_value::StoredValue};
+use engine_shared::{account::Account, gas::Gas, stored_value::StoredValue};
 use engine_storage::{global_state::StateReader, protocol_data::ProtocolData};
 use proof_of_stake::ProofOfStake;
 use standard_payment::StandardPayment;
 use types::{
-    account::{ActionType, PublicKey, Weight},
+    account::{AccountHash, ActionType, Weight},
     bytesrepr::{self, FromBytes, ToBytes},
-    system_contract_errors,
+    contracts::{
+        self, Contract, ContractPackage, EntryPoint, EntryPointAccess, EntryPoints, Group,
+    },
+    runtime_args, system_contract_errors,
     system_contract_errors::mint,
-    AccessRights, ApiError, CLType, CLTyped, CLValue, Key, ProtocolVersion, SystemContractType,
-    TransferResult, TransferredTo, URef, U128, U256, U512,
+    AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
+    ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion, RuntimeArgs,
+    SystemContractType, TransferResult, TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
     engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
-    execution::{Error, MINT_NAME, POS_NAME},
+    execution::Error,
     resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
-    runtime_context::RuntimeContext,
+    runtime_context::{self, RuntimeContext},
     Address,
 };
-use scoped_timer::ScopedTimer;
+use contracts::{ContractVersion, ContractVersions, DisabledVersions, Groups, NamedKeys};
+use scoped_instrumenter::ScopedInstrumenter;
 
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,
@@ -91,7 +95,6 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::URef(uref) => Some((uref.addr(), uref.access_rights())),
         Key::Account(_) => None,
         Key::Hash(_) => None,
-        Key::Local { .. } => None,
     }
 }
 
@@ -1108,7 +1111,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (CLType::String, CLType::Key) => {
-                let map: BTreeMap<String, Key> = cl_value.to_owned().into_t()?;
+                let map: NamedKeys = cl_value.to_owned().into_t()?;
                 Ok(map.values().cloned().filter_map(Key::into_uref).collect())
             }
             (_, _) => Ok(vec![]),
@@ -1409,6 +1412,11 @@ where
         self.memory.get(ptr, size).map_err(Into::into)
     }
 
+    fn t_from_mem<T: FromBytes>(&self, ptr: u32, size: u32) -> Result<T, Error> {
+        let bytes = self.bytes_from_mem(ptr, size as usize)?;
+        bytesrepr::deserialize(bytes).map_err(Into::into)
+    }
+
     /// Reads key (defined as `key_ptr` and `key_size` tuple) from Wasm memory.
     fn key_from_mem(&mut self, key_ptr: u32, key_size: u32) -> Result<Key, Error> {
         let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
@@ -1430,30 +1438,34 @@ where
         bytesrepr::deserialize(bytes).map_err(|e| Error::BytesRepr(e).into())
     }
 
-    fn get_function_by_name(&mut self, name_ptr: u32, name_size: u32) -> Result<Vec<u8>, Trap> {
-        let name = self.string_from_mem(name_ptr, name_size)?;
-
-        let has_name: bool = self
+    fn get_module_from_entry_points(
+        &mut self,
+        entry_points: &EntryPoints,
+    ) -> Result<Vec<u8>, Error> {
+        let export_section = self
             .module
             .export_section()
-            .and_then(|export_section| {
+            .ok_or_else(|| Error::FunctionNotFound(String::from("Missing Export Section")))?;
+
+        let entry_point_names: Vec<&str> = entry_points.keys().map(|s| s.as_str()).collect();
+
+        let maybe_missing_name: Option<String> = entry_point_names
+            .iter()
+            .find(|name| {
                 export_section
                     .entries()
                     .iter()
-                    .find(|export_entry| export_entry.field() == name)
+                    .find(|export_entry| export_entry.field() == **name)
+                    .is_none()
             })
-            .is_some();
+            .map(|s| String::from(*s));
 
-        if has_name {
-            let mut module = self.module.clone();
-            // We only want the function exported under `name` to be callable; `optimize` removes
-            // all code that is not reachable from the exports listed in the second argument.
-            pwasm_utils::optimize(&mut module, vec![&name]).unwrap();
-            rename_export_to_call(&mut module, name);
-
-            parity_wasm::serialize(module).map_err(|e| Error::ParityWasm(e).into())
+        if let Some(missing_name) = maybe_missing_name {
+            Err(Error::FunctionNotFound(missing_name))
         } else {
-            Err(Error::FunctionNotFound(name).into())
+            let mut module = self.module.clone();
+            pwasm_utils::optimize(&mut module, entry_point_names).unwrap();
+            parity_wasm::serialize(module).map_err(Error::ParityWasm)
         }
     }
 
@@ -1461,49 +1473,6 @@ where
         let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
         let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
         Ok(self.context.validate_uref(&uref).is_ok())
-    }
-
-    fn get_arg_size(&mut self, index: usize, size_ptr: u32) -> Result<Result<(), ApiError>, Trap> {
-        let arg_size = match self.context.args().get(index) {
-            Some(arg) if arg.inner_bytes().len() > u32::max_value() as usize => {
-                return Ok(Err(ApiError::OutOfMemory))
-            }
-            None => return Ok(Err(ApiError::MissingArgument)),
-            Some(arg) => arg.inner_bytes().len() as u32,
-        };
-
-        let arg_size_bytes = arg_size.to_le_bytes(); // Wasm is little-endian
-
-        if let Err(e) = self.memory.set(size_ptr, &arg_size_bytes) {
-            return Err(Error::Interpreter(e.into()).into());
-        }
-
-        Ok(Ok(()))
-    }
-
-    fn get_arg(
-        &mut self,
-        index: usize,
-        output_ptr: u32,
-        output_size: usize,
-    ) -> Result<Result<(), ApiError>, Trap> {
-        let arg = match self.context.args().get(index) {
-            Some(arg) => arg,
-            None => return Ok(Err(ApiError::MissingArgument)),
-        };
-
-        if arg.inner_bytes().len() > output_size {
-            return Ok(Err(ApiError::OutOfMemory));
-        }
-
-        if let Err(e) = self
-            .memory
-            .set(output_ptr, &arg.inner_bytes()[..output_size])
-        {
-            return Err(Error::Interpreter(e.into()).into());
-        }
-
-        Ok(Ok(()))
     }
 
     /// Load the uref known by the given name into the Wasm memory
@@ -1630,7 +1599,13 @@ where
 
     /// Return some bytes from the memory and terminate the current `sub_call`. Note that the return
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
-    fn ret(&mut self, value_ptr: u32, value_size: usize) -> Trap {
+    fn ret(
+        &mut self,
+        value_ptr: u32,
+        value_size: usize,
+        scoped_instrumenter: &mut ScopedInstrumenter,
+    ) -> Trap {
+        const UREF_COUNT: &str = "uref_count";
         self.host_buffer = None;
         let mem_get = self
             .memory
@@ -1647,31 +1622,37 @@ where
                     None => Ok(vec![]),
                 };
                 match urefs {
-                    Ok(urefs) => Error::Ret(urefs).into(),
-                    Err(e) => e.into(),
+                    Ok(urefs) => {
+                        scoped_instrumenter.add_property(UREF_COUNT, urefs.len());
+                        Error::Ret(urefs).into()
+                    }
+                    Err(e) => {
+                        scoped_instrumenter.add_property(UREF_COUNT, 0);
+                        e.into()
+                    }
                 }
             }
-            Err(e) => e.into(),
+            Err(e) => {
+                scoped_instrumenter.add_property(UREF_COUNT, 0);
+                e.into()
+            }
         }
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        match key {
-            Key::URef(uref) if self.protocol_data().mint().addr() == uref.addr() => true,
-            _ => false,
-        }
+        key.into_seed() == self.protocol_data().mint()
     }
 
     pub fn is_proof_of_stake(&self, key: Key) -> bool {
-        match key {
-            Key::URef(uref) if self.protocol_data().proof_of_stake().addr() == uref.addr() => true,
-            _ => false,
-        }
+        key.into_seed() == self.protocol_data().proof_of_stake()
     }
 
-    fn get_argument<T: FromBytes + CLTyped>(args: &[CLValue], index: usize) -> Result<T, Error> {
+    fn get_named_argument<T: FromBytes + CLTyped>(
+        args: &RuntimeArgs,
+        name: &str,
+    ) -> Result<T, Error> {
         let arg: CLValue = args
-            .get(index)
+            .get(name)
             .cloned()
             .ok_or_else(|| Error::Revert(ApiError::MissingArgument))?;
         arg.into_t()
@@ -1686,9 +1667,10 @@ where
     pub fn call_host_mint(
         &mut self,
         protocol_version: ProtocolVersion,
-        mut named_keys: BTreeMap<String, Key>,
-        args: &[CLValue],
-        extra_urefs: &[Key],
+        entry_point_name: &str,
+        named_keys: &mut NamedKeys,
+        runtime_args: &RuntimeArgs,
+        extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
         const METHOD_MINT: &str = "mint";
         const METHOD_CREATE: &str = "create";
@@ -1698,29 +1680,30 @@ where
         let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_urefs);
-            keys.push(self.get_mint_contract_uref().into());
-            keys.push(self.get_pos_contract_uref().into());
+            keys.extend(extra_keys);
+            keys.push(self.get_mint_contract().into());
+            keys.push(self.get_pos_contract().into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
         let base_key = self.protocol_data().mint().into();
         let blocktime = self.context.get_blocktime();
-        let deploy_hash = self.context.get_deployhash();
+        let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.fn_store_id();
-        let address_generator = self.context.address_generator();
+        let hash_address_generator = self.context.hash_address_generator();
+        let uref_address_generator = self.context.uref_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
 
         let mut mint_context = RuntimeContext::new(
             state,
-            &mut named_keys,
+            EntryPointType::Contract,
+            named_keys,
             access_rights,
-            args.to_owned(),
+            runtime_args.to_owned(),
             authorization_keys,
             account,
             base_key,
@@ -1728,20 +1711,18 @@ where
             deploy_hash,
             gas_limit,
             gas_counter,
-            fn_store_id,
-            address_generator,
+            hash_address_generator,
+            uref_address_generator,
             protocol_version,
             correlation_id,
             phase,
             protocol_data,
         );
 
-        let method_name: String = Self::get_argument(&args, 0)?;
-
-        let ret: CLValue = match method_name.as_str() {
+        let ret: CLValue = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
             METHOD_MINT => {
-                let amount: U512 = Self::get_argument(&args, 1)?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, "amount")?;
                 let result: Result<URef, mint::Error> = mint_context.mint(amount);
                 CLValue::from_t(result)?
             }
@@ -1752,16 +1733,16 @@ where
             }
             // Type: `fn balance(purse: URef) -> Option<U512>`
             METHOD_BALANCE => {
-                let uref: URef = Self::get_argument(&args, 1)?;
+                let uref: URef = Self::get_named_argument(&runtime_args, "purse")?;
                 let maybe_balance: Option<U512> =
                     mint_context.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
             // Type: `fn transfer(source: URef, target: URef, amount: U512) -> Result<(), Error>`
             METHOD_TRANSFER => {
-                let source: URef = Self::get_argument(&args, 1)?;
-                let target: URef = Self::get_argument(&args, 2)?;
-                let amount: U512 = Self::get_argument(&args, 3)?;
+                let source: URef = Self::get_named_argument(&runtime_args, "source")?;
+                let target: URef = Self::get_named_argument(&runtime_args, "target")?;
+                let amount: U512 = Self::get_named_argument(&runtime_args, "amount")?;
                 let result: Result<(), mint::Error> = mint_context.transfer(source, target, amount);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -1776,9 +1757,10 @@ where
     pub fn call_host_proof_of_stake(
         &mut self,
         protocol_version: ProtocolVersion,
-        mut named_keys: BTreeMap<String, Key>,
-        args: &[CLValue],
-        extra_urefs: &[Key],
+        entry_point_name: &str,
+        named_keys: &mut NamedKeys,
+        runtime_args: &RuntimeArgs,
+        extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
         const METHOD_BOND: &str = "bond";
         const METHOD_UNBOND: &str = "unbond";
@@ -1786,33 +1768,36 @@ where
         const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
         const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
         const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
+        const ARG_AMOUNT: &str = "amount";
+        const ARG_PURSE: &str = "purse";
 
         let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_urefs);
-            keys.push(self.get_mint_contract_uref().into());
-            keys.push(self.get_pos_contract_uref().into());
+            keys.extend(extra_keys);
+            keys.push(self.get_mint_contract().into());
+            keys.push(self.get_pos_contract().into());
             extract_access_rights_from_keys(keys)
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
         let base_key = self.protocol_data().proof_of_stake().into();
         let blocktime = self.context.get_blocktime();
-        let deploy_hash = self.context.get_deployhash();
+        let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
         let gas_counter = self.context.gas_counter();
-        let fn_store_id = self.context.fn_store_id();
-        let address_generator = self.context.address_generator();
+        let fn_store_id = self.context.hash_address_generator();
+        let address_generator = self.context.uref_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
 
         let runtime_context = RuntimeContext::new(
             state,
-            &mut named_keys,
+            EntryPointType::Contract,
+            named_keys,
             access_rights,
-            args.to_owned(),
+            runtime_args.to_owned(),
             authorization_keys,
             account,
             base_key,
@@ -1836,18 +1821,16 @@ where
             runtime_context,
         );
 
-        let method_name: String = Self::get_argument(&args, 0)?;
-
-        let ret: CLValue = match method_name.as_str() {
+        let ret: CLValue = match entry_point_name {
             METHOD_BOND => {
                 if !self.config.enable_bonding() {
                     let err = Error::Revert(ApiError::Unhandled);
                     return Err(err);
                 }
 
-                let validator: PublicKey = runtime.context.get_caller();
-                let amount: U512 = Self::get_argument(&args, 1)?;
-                let source_uref: URef = Self::get_argument(&args, 2)?;
+                let validator: AccountHash = runtime.context.get_caller();
+                let amount: U512 = Self::get_named_argument(&runtime_args, ARG_AMOUNT)?;
+                let source_uref: URef = Self::get_named_argument(&runtime_args, ARG_PURSE)?;
                 runtime
                     .bond(validator, amount, source_uref)
                     .map_err(Self::reverter)?;
@@ -1859,8 +1842,8 @@ where
                     return Err(err);
                 }
 
-                let validator: PublicKey = runtime.context.get_caller();
-                let maybe_amount: Option<U512> = Self::get_argument(&args, 1)?;
+                let validator: AccountHash = runtime.context.get_caller();
+                let maybe_amount: Option<U512> = Self::get_named_argument(&runtime_args, "amount")?;
                 runtime
                     .unbond(validator, maybe_amount)
                     .map_err(Self::reverter)?;
@@ -1872,7 +1855,7 @@ where
                 CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)?
             }
             METHOD_SET_REFUND_PURSE => {
-                let purse: URef = Self::get_argument(&args, 1)?;
+                let purse: URef = Self::get_named_argument(&runtime_args, "purse")?;
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
@@ -1881,8 +1864,8 @@ where
                 CLValue::from_t(maybe_purse).map_err(Self::reverter)?
             }
             METHOD_FINALIZE_PAYMENT => {
-                let amount_spent: U512 = Self::get_argument(&args, 1)?;
-                let account: PublicKey = Self::get_argument(&args, 2)?;
+                let amount_spent: U512 = Self::get_named_argument(&runtime_args, "amount")?;
+                let account: AccountHash = Self::get_named_argument(&runtime_args, "account")?;
                 runtime
                     .finalize_payment(amount_spent, account)
                     .map_err(Self::reverter)?;
@@ -1897,89 +1880,245 @@ where
     }
 
     pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
-        let first_arg = match self.context.args().first() {
-            Some(cl_value) => cl_value.clone(),
-            None => return Err(Error::InvalidContext),
-        };
-        let amount = first_arg.into_t()?;
+        let amount: U512 = Self::get_named_argument(&self.context.args(), "amount")?;
         self.pay(amount).map_err(Self::reverter)
     }
 
     /// Calls contract living under a `key`, with supplied `args`.
-    pub fn call_contract(&mut self, key: Key, args_bytes: Vec<u8>) -> Result<CLValue, Error> {
+    pub fn call_contract(
+        &mut self,
+        contract_hash: ContractHash,
+        entry_point_name: &str,
+        args: RuntimeArgs,
+    ) -> Result<CLValue, Error> {
+        let key = contract_hash.into();
         let contract = match self.context.read_gs(&key)? {
             Some(StoredValue::Contract(contract)) => contract,
             Some(_) => {
                 return Err(Error::FunctionNotFound(format!(
                     "Value at {:?} is not a contract",
                     key
-                )))
+                )));
             }
             None => return Err(Error::KeyNotFound(key)),
         };
 
-        // Check for major version compatibility before calling
-        let contract_version = contract.protocol_version();
-        let current_version = self.context.protocol_version();
-        if !contract_version.is_compatible_with(&current_version) {
-            return Err(Error::IncompatibleProtocolMajorVersion {
-                actual: current_version.value().major,
-                expected: contract_version.value().major,
-            });
-        }
+        let entry_point = contract
+            .entry_point(entry_point_name)
+            .cloned()
+            .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
-        let args: Vec<CLValue> = bytesrepr::deserialize(args_bytes)?;
+        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
 
-        let mut extra_urefs = vec![];
-        // A loop is needed to be able to use the '?' operator
-        for arg in &args {
-            extra_urefs.extend(
-                extract_urefs(arg)?
-                    .into_iter()
-                    .map(<Key as From<URef>>::from),
-            );
-        }
-        for key in &extra_urefs {
-            self.context.validate_key(key)?;
-        }
+        self.execute_contract(
+            key,
+            context_key,
+            contract,
+            args,
+            entry_point,
+            self.context.protocol_version(),
+        )
+    }
 
-        if !self.config.use_system_contracts() {
-            if self.is_mint(key) {
-                return self.call_host_mint(
-                    self.context.protocol_version(),
-                    contract.take_named_keys(),
-                    &args,
-                    &extra_urefs,
-                );
-            } else if self.is_proof_of_stake(key) {
-                return self.call_host_proof_of_stake(
-                    self.context.protocol_version(),
-                    contract.take_named_keys(),
-                    &args,
-                    &extra_urefs,
-                );
+    /// Calls `version` of the contract living at `key`, invoking `method` with
+    /// supplied `args`. This function also checks the args conform with the
+    /// types given in the contract header.
+    pub fn call_versioned_contract(
+        &mut self,
+        contract_package_hash: ContractPackageHash,
+        contract_version: Option<ContractVersion>,
+        entry_point_name: String,
+        args: RuntimeArgs,
+    ) -> Result<CLValue, Error> {
+        let key = contract_package_hash.into();
+
+        let contract_package = match self.context.read_gs(&key)? {
+            Some(StoredValue::ContractPackage(contract_package)) => contract_package,
+            Some(_) => {
+                return Err(Error::FunctionNotFound(format!(
+                    "Value at {:?} is not a versioned contract",
+                    contract_package_hash
+                )));
+            }
+            None => return Err(Error::KeyNotFound(key)),
+        };
+
+        let contract_version_key = match contract_version {
+            Some(version) => {
+                ContractVersionKey::new(self.context.protocol_version().value().major, version)
+            }
+            None => match contract_package.current_contract_version() {
+                Some(v) => v,
+                None => return Err(Error::NoActiveContractVersions(contract_package_hash)),
+            },
+        };
+
+        // Get contract entry point hash
+        let contract_hash = contract_package
+            .lookup_contract_hash(contract_version_key)
+            .cloned()
+            .ok_or_else(|| Error::InvalidContractVersion(contract_version_key))?;
+
+        // Get contract data
+        let contract = match self.context.read_gs(&contract_hash.into())? {
+            Some(StoredValue::Contract(contract)) => contract,
+            Some(_) => {
+                return Err(Error::FunctionNotFound(format!(
+                    "Value at {:?} is not a contract",
+                    contract_package_hash
+                )));
+            }
+            None => return Err(Error::KeyNotFound(key)),
+        };
+
+        let entry_point = contract
+            .entry_point(&entry_point_name)
+            .cloned()
+            .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
+
+        self.validate_entry_point_access(&contract_package, entry_point.access())?;
+
+        for (expected, found) in entry_point
+            .args()
+            .iter()
+            .map(|a| a.cl_type())
+            .cloned()
+            .zip(args.to_values().into_iter().map(|v| v.cl_type()).cloned())
+        {
+            if expected != found {
+                return Err(Error::type_mismatch(expected, found));
             }
         }
 
-        let maybe_module = match key {
-            Key::URef(uref) => self.system_contract_cache.get(&uref),
-            _ => None,
+        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
+
+        self.execute_contract(
+            context_key,
+            context_key,
+            contract,
+            args,
+            entry_point,
+            self.context.protocol_version(),
+        )
+    }
+
+    fn get_context_key_for_contract_call(
+        &self,
+        contract_hash: ContractHash,
+        entry_point: &EntryPoint,
+    ) -> Result<Key, Error> {
+        match entry_point.entry_point_type() {
+            EntryPointType::Session
+                if self.context.entry_point_type() == EntryPointType::Contract =>
+            {
+                // Session code can't be called from Contract code for security reasons.
+                Err(Error::InvalidContext)
+            }
+            EntryPointType::Session => {
+                assert_eq!(self.context.entry_point_type(), EntryPointType::Session);
+                // Session code called from session reuses current base key
+                Ok(self.context.base_key())
+            }
+            EntryPointType::Contract => Ok(contract_hash.into()),
+        }
+    }
+
+    pub(crate) fn access_rights_extend(
+        &mut self,
+        access_rights: HashMap<Address, HashSet<AccessRights>>,
+    ) {
+        self.context.access_rights_extend(access_rights)
+    }
+
+    fn execute_contract(
+        &mut self,
+        key: Key,
+        base_key: Key,
+        contract: Contract,
+        args: RuntimeArgs,
+        entry_point: EntryPoint,
+        protocol_version: ProtocolVersion,
+    ) -> Result<CLValue, Error> {
+        // Check for major version compatibility before calling
+        if !contract.is_compatible_protocol_version(protocol_version) {
+            return Err(Error::IncompatibleProtocolMajorVersion {
+                actual: contract.protocol_version().value().major,
+                expected: protocol_version.value().major,
+            });
+        }
+
+        // TODO: should we be using named_keys_mut() instead?
+        let mut named_keys = match entry_point.entry_point_type() {
+            EntryPointType::Session => self.context.account().named_keys().clone(),
+            EntryPointType::Contract => contract.named_keys().clone(),
         };
 
-        let module = match maybe_module {
-            Some(module) => module,
-            None => parity_wasm::deserialize_buffer(contract.bytes())?,
+        let extra_keys = {
+            let mut extra_keys = vec![];
+            // A loop is needed to be able to use the '?' operator
+            for arg in args.to_values() {
+                extra_keys.extend(
+                    extract_urefs(arg)?
+                        .into_iter()
+                        .map(<Key as From<URef>>::from),
+                );
+            }
+            for key in &extra_keys {
+                self.context.validate_key(key)?;
+            }
+
+            if !self.config.use_system_contracts() {
+                if self.is_mint(key) {
+                    return self.call_host_mint(
+                        self.context.protocol_version(),
+                        entry_point.name(),
+                        &mut named_keys,
+                        &args,
+                        &extra_keys,
+                    );
+                } else if self.is_proof_of_stake(key) {
+                    return self.call_host_proof_of_stake(
+                        self.context.protocol_version(),
+                        entry_point.name(),
+                        &mut named_keys,
+                        &args,
+                        &extra_keys,
+                    );
+                }
+            }
+
+            extra_keys
         };
 
-        let mut named_keys = contract.take_named_keys();
+        let module = {
+            let maybe_module = self.system_contract_cache.get(key.into_seed());
+            let wasm_key = contract.contract_wasm_key();
 
-        let (instance, memory) = instance_and_memory(module.clone(), contract_version)?;
+            let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
+                Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
+                Some(_) => {
+                    return Err(Error::FunctionNotFound(format!(
+                        "Value at {:?} is not contract wasm",
+                        key
+                    )));
+                }
+                None => return Err(Error::KeyNotFound(key)),
+            };
+            match maybe_module {
+                Some(module) => module,
+                None => parity_wasm::deserialize_buffer(contract_wasm.bytes())?,
+            }
+        };
+
+        let entry_point_name = entry_point.name();
+
+        let (instance, memory) = instance_and_memory(module.clone(), protocol_version)?;
 
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
-            keys.extend(extra_urefs);
-            keys.push(self.get_mint_contract_uref().into());
-            keys.push(self.get_pos_contract_uref().into());
+            keys.extend(extra_keys);
+            keys.push(self.get_mint_contract().into());
+            keys.push(self.get_pos_contract().into());
             extract_access_rights_from_keys(keys)
         };
 
@@ -1991,19 +2130,20 @@ where
 
         let context = RuntimeContext::new(
             self.context.state(),
+            entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
             args,
             self.context.authorization_keys().clone(),
             &self.context.account(),
-            key,
+            base_key,
             self.context.get_blocktime(),
-            self.context.get_deployhash(),
+            self.context.get_deploy_hash(),
             self.context.gas_limit(),
             self.context.gas_counter(),
-            self.context.fn_store_id(),
-            self.context.address_generator(),
-            contract_version,
+            self.context.hash_address_generator(),
+            self.context.uref_address_generator(),
+            protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
             self.context.protocol_data(),
@@ -2018,7 +2158,7 @@ where
             context,
         };
 
-        let result = instance.invoke_export("call", &[], &mut runtime);
+        let result = instance.invoke_export(entry_point_name, &[], &mut runtime);
 
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
@@ -2031,7 +2171,16 @@ where
             // not explicitly call `runtime::ret()`.  Treat as though the execution
             // returned the unit type `()` as per Rust functions which don't specify a
             // return value.
-            Ok(_) => return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?)),
+            Ok(_) => {
+                if self.context.entry_point_type() == EntryPointType::Session
+                    && runtime.context.entry_point_type() == EntryPointType::Session
+                {
+                    // Overwrites parent's named keys with child's new named key but only when
+                    // running session code
+                    *self.context.named_keys_mut() = runtime.context.named_keys().clone();
+                }
+                return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
+            }
         };
 
         if let Some(host_error) = error.as_host_error() {
@@ -2046,6 +2195,13 @@ where
                         extract_access_rights_from_urefs(ret_urefs.clone());
                     self.context.access_rights_extend(ret_urefs_map);
                     // if ret has not set host_buffer consider it programmer error
+                    if self.context.entry_point_type() == EntryPointType::Session
+                        && runtime.context.entry_point_type() == EntryPointType::Session
+                    {
+                        // Overwrites parent's named keys with child's new named key but only when
+                        // running session code
+                        *self.context.named_keys_mut() = runtime.context.named_keys().clone();
+                    }
                     return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
                 }
                 error => return Err(error.clone()),
@@ -2057,20 +2213,61 @@ where
 
     fn call_contract_host_buffer(
         &mut self,
-        key: Key,
+        contract_hash: ContractHash,
+        entry_point_name: &str,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
-        scoped_timer: &mut ScopedTimer,
+        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Error> {
-        if !self.can_write_to_host_buffer() {
-            // Exit early if the host buffer is already occupied
-            return Ok(Err(ApiError::HostBufferFull));
+        // Exit early if the host buffer is already occupied
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
         }
+        let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
+        scoped_instrumenter.pause();
+        let result = self.call_contract(contract_hash, entry_point_name, args)?;
+        scoped_instrumenter.unpause();
+        self.manage_call_contract_host_buffer(result_size_ptr, result)
+    }
 
-        scoped_timer.pause();
-        let result = self.call_contract(key, args_bytes);
-        scoped_timer.unpause();
-        let result = result?;
+    fn call_versioned_contract_host_buffer(
+        &mut self,
+        contract_package_hash: ContractPackageHash,
+        contract_version: Option<ContractVersion>,
+        entry_point_name: String,
+        args_bytes: Vec<u8>,
+        result_size_ptr: u32,
+        scoped_instrumenter: &mut ScopedInstrumenter,
+    ) -> Result<Result<(), ApiError>, Error> {
+        // Exit early if the host buffer is already occupied
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
+        }
+        let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
+        scoped_instrumenter.pause();
+        let result = self.call_versioned_contract(
+            contract_package_hash,
+            contract_version,
+            entry_point_name,
+            args,
+        )?;
+        scoped_instrumenter.unpause();
+        self.manage_call_contract_host_buffer(result_size_ptr, result)
+    }
+
+    fn check_host_buffer(&mut self) -> Result<(), ApiError> {
+        if !self.can_write_to_host_buffer() {
+            Err(ApiError::HostBufferFull)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn manage_call_contract_host_buffer(
+        &mut self,
+        result_size_ptr: u32,
+        result: CLValue,
+    ) -> Result<Result<(), ApiError>, Error> {
         let result_size = result.inner_bytes().len() as u32; // considered to be safe
 
         // leave the host buffer set to `None` if there's nothing to write there
@@ -2092,16 +2289,15 @@ where
         &mut self,
         total_keys_ptr: u32,
         result_size_ptr: u32,
-        scoped_timer: &mut ScopedTimer,
+        scoped_instrumenter: &mut ScopedInstrumenter,
     ) -> Result<Result<(), ApiError>, Trap> {
-        scoped_timer.add_property(
+        scoped_instrumenter.add_property(
             "names_total_length",
             self.context
                 .named_keys()
                 .keys()
                 .map(|name| name.len())
-                .sum::<usize>()
-                .to_string(),
+                .sum::<usize>(),
         );
 
         if !self.can_write_to_host_buffer() {
@@ -2136,31 +2332,224 @@ where
         Ok(Ok(()))
     }
 
-    fn store_function(
-        &mut self,
-        fn_bytes: Vec<u8>,
-        named_keys: BTreeMap<String, Key>,
-    ) -> Result<[u8; 32], Error> {
-        let contract = Contract::new(fn_bytes, named_keys, self.context.protocol_version());
-        let contract_addr = self
-            .context
-            .store_function(StoredValue::Contract(contract))?;
-        Ok(contract_addr)
+    fn create_contract_value(&mut self) -> Result<(StoredValue, URef), Error> {
+        let access_key = self.context.new_unit_uref()?;
+        let contract_package = ContractPackage::new(
+            access_key,
+            ContractVersions::default(),
+            DisabledVersions::default(),
+            Groups::default(),
+        );
+
+        let value = StoredValue::ContractPackage(contract_package);
+
+        Ok((value, access_key))
     }
 
-    /// Tries to store a function, represented as bytes from the Wasm memory,
-    /// into the GlobalState and writes back a function's hash at `hash_ptr`
-    /// in the Wasm memory.
-    fn store_function_at_hash(
+    fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
+        let addr = self.context.new_hash_address()?;
+        let key = Key::Hash(addr);
+        let (stored_value, access_key) = self.create_contract_value()?;
+
+        self.context.state().borrow_mut().write(key, stored_value);
+        Ok((addr, access_key.addr()))
+    }
+
+    fn create_contract_user_group(
         &mut self,
-        fn_bytes: Vec<u8>,
-        named_keys: BTreeMap<String, Key>,
-    ) -> Result<[u8; 32], Error> {
-        let contract = Contract::new(fn_bytes, named_keys, self.context.protocol_version());
-        let new_hash = self
+        contract_package_hash: ContractPackageHash,
+        label: String,
+        num_new_urefs: u32,
+        mut existing_urefs: BTreeSet<URef>,
+        output_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let contract_package_key = contract_package_hash.into();
+
+        let mut contract_package: ContractPackage = self
             .context
-            .store_function_at_hash(StoredValue::Contract(contract))?;
-        Ok(new_hash)
+            .get_validated_contract_package(contract_package_hash)?;
+
+        let groups = contract_package.groups_mut();
+        let new_group = Group::new(label);
+
+        // Ensure group does not already exist
+        if groups.get(&new_group).is_some() {
+            return Ok(Err(contracts::Error::GroupAlreadyExists.into()));
+        }
+
+        // Ensure there are not too many groups
+        if groups.len() >= (contracts::MAX_GROUPS as usize) {
+            return Ok(Err(contracts::Error::MaxGroupsExceeded.into()));
+        }
+
+        // Ensure there are not too many urefs
+        let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum::<usize>()
+            + (num_new_urefs as usize)
+            + existing_urefs.len();
+        if total_urefs > contracts::MAX_TOTAL_UREFS {
+            let err = contracts::Error::MaxTotalURefsExceeded;
+            return Ok(Err(ApiError::ContractHeader(err as u8)));
+        }
+
+        // Proceed with creating user group
+        let mut new_urefs = Vec::with_capacity(num_new_urefs as usize);
+        for _ in 0..num_new_urefs {
+            let u = self.context.new_unit_uref()?;
+            new_urefs.push(u);
+        }
+
+        for u in new_urefs.iter().cloned() {
+            existing_urefs.insert(u);
+        }
+        groups.insert(new_group, existing_urefs);
+
+        // check we can write to the host buffer
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
+        }
+        // create CLValue for return value
+        let new_urefs_value = CLValue::from_t(new_urefs)?;
+        let value_size = new_urefs_value.inner_bytes().len();
+        // write return value to buffer
+        if let Err(err) = self.write_host_buffer(new_urefs_value) {
+            return Ok(Err(err));
+        }
+        // Write return value size to output location
+        let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
+        if let Err(error) = self.memory.set(output_size_ptr, &output_size_bytes) {
+            return Err(Error::Interpreter(error.into()));
+        }
+
+        // Write updated package to the global state
+        self.context.state().borrow_mut().write(
+            contract_package_key,
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        Ok(Ok(()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn add_contract_version(
+        &mut self,
+        contract_package_hash: ContractPackageHash,
+        entry_points: EntryPoints,
+        mut named_keys: NamedKeys,
+        output_ptr: u32,
+        output_size: usize,
+        bytes_written_ptr: u32,
+        version_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let contract_package_key = contract_package_hash.into();
+        self.context.validate_key(&contract_package_key)?;
+
+        let mut contract_package: ContractPackage = self
+            .context
+            .get_validated_contract_package(contract_package_hash)?;
+
+        let contract_wasm_hash = self.context.new_hash_address()?;
+        let contract_wasm_key = Key::Hash(contract_wasm_hash);
+        let contract_wasm = {
+            let module_bytes = self.get_module_from_entry_points(&entry_points)?;
+            ContractWasm::new(module_bytes)
+        };
+
+        let contract_hash = self.context.new_hash_address()?;
+        let contract_key = Key::Hash(contract_hash);
+
+        let protocol_version = self.context.protocol_version();
+        let major = protocol_version.value().major;
+
+        // TODO: EE-1032 - Implement different ways of carrying on existing named keys
+        if let Some(previous_contract_hash) = contract_package.current_contract_hash() {
+            let previous_contract: Contract =
+                self.context.read_gs_typed(&previous_contract_hash.into())?;
+
+            let mut previous_named_keys = previous_contract.take_named_keys();
+            named_keys.append(&mut previous_named_keys);
+        }
+
+        let contract = Contract::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            named_keys,
+            entry_points,
+            protocol_version,
+        );
+
+        let insert_contract_result = contract_package.insert_contract_version(major, contract_hash);
+
+        self.context
+            .state()
+            .borrow_mut()
+            .write(contract_wasm_key, StoredValue::ContractWasm(contract_wasm));
+
+        self.context
+            .state()
+            .borrow_mut()
+            .write(contract_key, StoredValue::Contract(contract));
+
+        self.context.state().borrow_mut().write(
+            contract_package_key,
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        // return contract key to caller
+        {
+            let key_bytes = match contract_hash.to_bytes() {
+                Ok(bytes) => bytes,
+                Err(error) => return Ok(Err(error.into())),
+            };
+
+            // `output_size` must be >= actual length of serialized Key bytes
+            if output_size < key_bytes.len() {
+                return Ok(Err(ApiError::BufferTooSmall));
+            }
+
+            // Set serialized Key bytes into the output buffer
+            if let Err(error) = self.memory.set(output_ptr, &key_bytes) {
+                return Err(Error::Interpreter(error.into()));
+            }
+
+            // Following cast is assumed to be safe
+            let bytes_size = key_bytes.len() as u32;
+            let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
+            if let Err(error) = self.memory.set(bytes_written_ptr, &size_bytes) {
+                return Err(Error::Interpreter(error.into()));
+            }
+
+            let version_value: u32 = insert_contract_result.contract_version();
+            let version_bytes = version_value.to_le_bytes();
+            if let Err(error) = self.memory.set(version_ptr, &version_bytes) {
+                return Err(Error::Interpreter(error.into()));
+            }
+        }
+
+        Ok(Ok(()))
+    }
+
+    fn disable_contract_version(
+        &mut self,
+        contract_package_hash: ContractPackageHash,
+        contract_hash: ContractHash,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let contract_package_key = contract_package_hash.into();
+        self.context.validate_key(&contract_package_key)?;
+
+        let mut contract_package: ContractPackage = self
+            .context
+            .get_validated_contract_package(contract_package_hash)?;
+
+        if let Err(err) = contract_package.disable_contract_version(contract_hash) {
+            return Ok(Err(err.into()));
+        }
+
+        self.context.state().borrow_mut().write(
+            contract_package_key,
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        Ok(Ok(()))
     }
 
     /// Writes function address (`hash_bytes`) into the Wasm memory (at
@@ -2224,22 +2613,6 @@ where
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
             .add_gs(key, StoredValue::CLValue(cl_value))
-            .map_err(Into::into)
-    }
-
-    /// Adds `value` to the cell pointed to by a key derived from `key` in the "local cluster" of
-    /// GlobalState
-    pub fn add_local(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        value_ptr: u32,
-        value_size: u32,
-    ) -> Result<(), Trap> {
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
-        self.context
-            .add_ls(&key_bytes, cl_value)
             .map_err(Into::into)
     }
 
@@ -2318,21 +2691,21 @@ where
 
     fn add_associated_key(
         &mut self,
-        public_key_ptr: u32,
-        public_key_size: usize,
+        account_hash_ptr: u32,
+        account_hash_size: usize,
         weight_value: u8,
     ) -> Result<i32, Trap> {
-        let public_key = {
-            // Public key as serialized bytes
-            let source_serialized = self.bytes_from_mem(public_key_ptr, public_key_size)?;
-            // Public key deserialized
-            let source: PublicKey =
+        let account_hash = {
+            // Account hash as serialized bytes
+            let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
+            // Account hash deserialized
+            let source: AccountHash =
                 bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
 
-        match self.context.add_associated_key(public_key, weight) {
+        match self.context.add_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
             // This relies on the fact that `AddKeyFailure` is represented as
             // i32 and first variant start with number `1`, so all other variants
@@ -2346,18 +2719,18 @@ where
 
     fn remove_associated_key(
         &mut self,
-        public_key_ptr: u32,
-        public_key_size: usize,
+        account_hash_ptr: u32,
+        account_hash_size: usize,
     ) -> Result<i32, Trap> {
-        let public_key = {
-            // Public key as serialized bytes
-            let source_serialized = self.bytes_from_mem(public_key_ptr, public_key_size)?;
-            // Public key deserialized
-            let source: PublicKey =
+        let account_hash = {
+            // Account hash as serialized bytes
+            let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
+            // Account hash deserialized
+            let source: AccountHash =
                 bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
-        match self.context.remove_associated_key(public_key) {
+        match self.context.remove_associated_key(account_hash) {
             Ok(_) => Ok(0),
             Err(Error::RemoveKeyFailure(e)) => Ok(e as i32),
             Err(e) => Err(e.into()),
@@ -2366,21 +2739,21 @@ where
 
     fn update_associated_key(
         &mut self,
-        public_key_ptr: u32,
-        public_key_size: usize,
+        account_hash_ptr: u32,
+        account_hash_size: usize,
         weight_value: u8,
     ) -> Result<i32, Trap> {
-        let public_key = {
-            // Public key as serialized bytes
-            let source_serialized = self.bytes_from_mem(public_key_ptr, public_key_size)?;
-            // Public key deserialized
-            let source: PublicKey =
+        let account_hash = {
+            // Account hash as serialized bytes
+            let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
+            // Account hash deserialized
+            let source: AccountHash =
                 bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
 
-        match self.context.update_associated_key(public_key, weight) {
+        match self.context.update_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
             // This relies on the fact that `UpdateKeyFailure` is represented as
             // i32 and first variant start with number `1`, so all other variants
@@ -2413,61 +2786,57 @@ where
     /// Looks up the public mint contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_mint_contract_uref(&self) -> URef {
-        let mint = self.context.protocol_data().mint();
-        self.context.attenuate_uref(mint)
+    fn get_mint_contract(&self) -> ContractHash {
+        self.context.protocol_data().mint()
     }
 
     /// Looks up the public PoS contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_pos_contract_uref(&self) -> URef {
-        let pos = self.context.protocol_data().proof_of_stake();
-        self.context.attenuate_uref(pos)
+    fn get_pos_contract(&self) -> ContractHash {
+        self.context.protocol_data().proof_of_stake()
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_standard_payment_contract_uref(&self) -> URef {
-        let standard_payment = self.context.protocol_data().standard_payment();
-        self.context.attenuate_uref(standard_payment)
+    fn get_standard_payment_contract(&self) -> ContractHash {
+        self.context.protocol_data().standard_payment()
     }
 
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
-    fn mint_create(&mut self, mint_contract_key: Key) -> Result<URef, Error> {
-        let args_bytes = {
-            let args = ("create",);
-            ArgsParser::parse(args)?.into_bytes()?
-        };
-
-        let result = self.call_contract(mint_contract_key, args_bytes)?;
+    fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
+        let result = self.call_contract(mint_contract_hash, "create", RuntimeArgs::new())?;
         let purse = result.into_t()?;
 
         Ok(purse)
     }
 
     fn create_purse(&mut self) -> Result<URef, Error> {
-        let mint_contract_key = self.get_mint_contract_uref().into();
-        self.mint_create(mint_contract_key)
+        self.mint_create(self.get_mint_contract())
     }
 
     /// Calls the "transfer" method on the mint contract at the given mint
     /// contract key
     fn mint_transfer(
         &mut self,
-        mint_contract_key: Key,
+        mint_contract_hash: ContractHash,
         source: URef,
         target: URef,
         amount: U512,
     ) -> Result<(), Error> {
-        let args_bytes = {
-            let args = ("transfer", source, target, amount);
-            ArgsParser::parse(args)?.into_bytes()?
+        const ARG_SOURCE: &str = "source";
+        const ARG_TARGET: &str = "target";
+        const ARG_AMOUNT: &str = "amount";
+
+        let args_values: RuntimeArgs = runtime_args! {
+            ARG_SOURCE => source,
+            ARG_TARGET => target,
+            ARG_AMOUNT => amount,
         };
 
-        let result = self.call_contract(mint_contract_key, args_bytes)?;
+        let result = self.call_contract(mint_contract_hash, "transfer", args_values)?;
         let result: Result<(), mint::Error> = result.into_t()?;
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
@@ -2477,10 +2846,10 @@ where
     fn transfer_to_new_account(
         &mut self,
         source: URef,
-        target: PublicKey,
+        target: AccountHash,
         amount: U512,
     ) -> Result<TransferResult, Error> {
-        let mint_contract_key = self.get_mint_contract_uref().into();
+        let mint_contract_hash = self.get_mint_contract();
 
         let target_key = Key::Account(target);
 
@@ -2490,36 +2859,15 @@ where
             return Ok(Err(ApiError::Transfer));
         }
 
-        let target_purse = self.mint_create(mint_contract_key)?;
+        let target_purse = self.mint_create(mint_contract_hash)?;
 
         if source == target_purse {
             return Ok(Err(ApiError::Transfer));
         }
 
-        match self.mint_transfer(mint_contract_key, source, target_purse, amount) {
+        match self.mint_transfer(mint_contract_hash, source, target_purse, amount) {
             Ok(_) => {
-                // After merging in EE-704 system contracts lookup internally uses protocol data and
-                // this is used for backwards compatibility with explorer to query mint/pos urefs.
-                let named_keys = vec![
-                    (
-                        String::from(MINT_NAME),
-                        Key::from(self.get_mint_contract_uref()),
-                    ),
-                    (
-                        String::from(POS_NAME),
-                        Key::from(self.get_pos_contract_uref()),
-                    ),
-                ]
-                .into_iter()
-                .map(|(name, key)| {
-                    if let Some(uref) = key.as_uref() {
-                        (name, Key::URef(URef::new(uref.addr(), AccessRights::READ)))
-                    } else {
-                        (name, key)
-                    }
-                })
-                .collect();
-                let account = Account::create(target, named_keys, target_purse);
+                let account = Account::create(target, Default::default(), target_purse);
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
@@ -2536,7 +2884,7 @@ where
         target: URef,
         amount: U512,
     ) -> Result<TransferResult, Error> {
-        let mint_contract_key = self.get_mint_contract_uref().into();
+        let mint_contract_key = self.get_mint_contract();
 
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
         self.context.insert_uref(target);
@@ -2551,7 +2899,7 @@ where
     /// `target` account. If that account does not exist, creates one.
     fn transfer_to_account(
         &mut self,
-        target: PublicKey,
+        target: AccountHash,
         amount: U512,
     ) -> Result<TransferResult, Error> {
         let source = self.context.get_main_purse()?;
@@ -2563,7 +2911,7 @@ where
     fn transfer_from_purse_to_account(
         &mut self,
         source: URef,
-        target: PublicKey,
+        target: AccountHash,
         amount: U512,
     ) -> Result<TransferResult, Error> {
         let target_key = Key::Account(target);
@@ -2614,7 +2962,7 @@ where
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
         };
 
-        let mint_contract_key = self.get_mint_contract_uref().into();
+        let mint_contract_key = self.get_mint_contract();
 
         if self
             .mint_transfer(mint_contract_key, source, target, amount)
@@ -2627,11 +2975,9 @@ where
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        let seed = self.get_mint_contract_uref().addr();
+        let key = purse.addr();
 
-        let key = purse.addr().into_bytes()?;
-
-        let uref_key = match self.context.read_ls_with_seed(seed, &key)? {
+        let uref_key = match self.context.read_ls(&key)? {
             Some(cl_value) => {
                 let key: Key = cl_value.into_t().expect("expected Key type");
                 match key {
@@ -2701,58 +3047,21 @@ where
         Ok(Ok(()))
     }
 
-    /// If key is in named_keys with AccessRights::Write, processes bytes from calling contract
-    /// and writes them at the provided uref, overwriting existing value if any
-    fn upgrade_contract_at_uref(
-        &mut self,
-        name_ptr: u32,
-        name_size: u32,
-        key_ptr: u32,
-        key_size: u32,
-        scoped_timer: &mut ScopedTimer,
-    ) -> Result<Result<(), ApiError>, Trap> {
-        let key = self.key_from_mem(key_ptr, key_size)?;
-        let named_keys = match self.context.read_gs(&key)? {
-            None => Err(Error::KeyNotFound(key)),
-            Some(StoredValue::Contract(contract)) => {
-                let old_contract_size =
-                    contract.named_keys().serialized_length() + contract.bytes().len();
-                scoped_timer.add_property("old_contract_size", old_contract_size.to_string());
-                Ok(contract.named_keys().clone())
-            }
-            Some(_) => Err(Error::FunctionNotFound(format!(
-                "Value at {:?} is not a contract",
-                key
-            ))),
-        }?;
-        let bytes = self.get_function_by_name(name_ptr, name_size)?;
-        let new_contract_size = named_keys.serialized_length() + bytes.len();
-        scoped_timer.add_property("new_contract_size", new_contract_size.to_string());
-        match self
-            .context
-            .upgrade_contract_at_uref(key, bytes, named_keys)
-        {
-            Ok(_) => Ok(Ok(())),
-            Err(_) => Ok(Err(ApiError::UpgradeContractAtURef)),
-        }
-    }
-
     fn get_system_contract(
         &mut self,
         system_contract_index: u32,
         dest_ptr: u32,
         _dest_size: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
-        let attenuated_uref = match SystemContractType::try_from(system_contract_index) {
-            Ok(SystemContractType::Mint) => self.get_mint_contract_uref(),
-            Ok(SystemContractType::ProofOfStake) => self.get_pos_contract_uref(),
-            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract_uref(),
+        let contract_hash: ContractHash = match SystemContractType::try_from(system_contract_index)
+        {
+            Ok(SystemContractType::Mint) => self.get_mint_contract(),
+            Ok(SystemContractType::ProofOfStake) => self.get_pos_contract(),
+            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract(),
             Err(error) => return Ok(Err(error)),
         };
 
-        // Serialize data that will be written the memory under `dest_ptr`
-        let attenuated_uref_bytes = attenuated_uref.into_bytes().map_err(Error::BytesRepr)?;
-        match self.memory.set(dest_ptr, &attenuated_uref_bytes) {
+        match self.memory.set(dest_ptr, &contract_hash) {
             Ok(_) => Ok(Ok(())),
             Err(error) => Err(Error::Interpreter(error.into()).into()),
         }
@@ -2819,6 +3128,233 @@ where
         let text = self.string_from_mem(text_ptr, text_size)?;
         println!("{}", text);
         Ok(())
+    }
+
+    fn get_named_arg_size(
+        &mut self,
+        name_ptr: u32,
+        name_size: usize,
+        size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        let name_bytes = self.bytes_from_mem(name_ptr, name_size)?;
+        let name = String::from_utf8_lossy(&name_bytes);
+
+        let arg_size = match self.context.args().get(&name) {
+            Some(arg) if arg.inner_bytes().len() > u32::max_value() as usize => {
+                return Ok(Err(ApiError::OutOfMemory));
+            }
+            Some(arg) => arg.inner_bytes().len() as u32,
+            None => return Ok(Err(ApiError::MissingArgument)),
+        };
+
+        let arg_size_bytes = arg_size.to_le_bytes(); // Wasm is little-endian
+
+        if let Err(e) = self.memory.set(size_ptr, &arg_size_bytes) {
+            return Err(Error::Interpreter(e.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+    fn get_named_arg(
+        &mut self,
+        name_ptr: u32,
+        name_size: usize,
+        output_ptr: u32,
+        output_size: usize,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        let name_bytes = self.bytes_from_mem(name_ptr, name_size)?;
+        let name = String::from_utf8_lossy(&name_bytes);
+
+        let arg = match self.context.args().get(&name) {
+            Some(arg) => arg,
+            None => return Ok(Err(ApiError::MissingArgument)),
+        };
+
+        if arg.inner_bytes().len() > output_size {
+            return Ok(Err(ApiError::OutOfMemory));
+        }
+
+        if let Err(e) = self
+            .memory
+            .set(output_ptr, &arg.inner_bytes()[..output_size])
+        {
+            return Err(Error::Interpreter(e.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+    fn validate_entry_point_access(
+        &self,
+        package: &ContractPackage,
+        access: &EntryPointAccess,
+    ) -> Result<(), Error> {
+        runtime_context::validate_entry_point_access_with(package, access, |uref| {
+            self.context.validate_uref(uref).is_ok()
+        })
+    }
+
+    /// Remove a user group from access to a contract
+    fn remove_contract_user_group(
+        &mut self,
+        package_key: ContractPackageHash,
+        label: Group,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let mut package: ContractPackage =
+            self.context.get_validated_contract_package(package_key)?;
+
+        let group_to_remove = Group::new(label);
+        let groups = package.groups_mut();
+
+        // Ensure group exists in groups
+        if groups.get(&group_to_remove).is_none() {
+            return Ok(Err(contracts::Error::GroupDoesNotExist.into()));
+        }
+
+        // Remove group if it is not referenced by at least one entry_point in active versions.
+        let versions = package.versions();
+        for contract_hash in versions.values() {
+            let entry_points = {
+                let contract: Contract = self.context.read_gs_typed(&Key::from(*contract_hash))?;
+                contract.entry_points().clone().take_entry_points()
+            };
+            for entry_point in entry_points {
+                match entry_point.access() {
+                    EntryPointAccess::Public => {
+                        continue;
+                    }
+                    EntryPointAccess::Groups(groups) => {
+                        if groups.contains(&group_to_remove) {
+                            return Ok(Err(contracts::Error::GroupInUse.into()));
+                        }
+                    }
+                }
+            }
+        }
+
+        if !package.remove_group(&group_to_remove) {
+            return Ok(Err(contracts::Error::GroupInUse.into()));
+        }
+
+        // Write updated package to the global state
+        self.context.state().borrow_mut().write(
+            Key::from(package_key),
+            StoredValue::ContractPackage(package),
+        );
+        Ok(Ok(()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn provision_contract_user_group_uref(
+        &mut self,
+        package_ptr: u32,
+        package_size: u32,
+        label_ptr: u32,
+        label_size: u32,
+        output_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let contract_package_hash = self.t_from_mem(package_ptr, package_size)?;
+        let label: String = self.t_from_mem(label_ptr, label_size)?;
+        let mut contract_package = self
+            .context
+            .get_validated_contract_package(contract_package_hash)?;
+        let groups = contract_package.groups_mut();
+
+        let group_label = Group::new(label);
+
+        // Ensure there are not too many urefs
+        let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum();
+
+        if total_urefs + 1 > contracts::MAX_TOTAL_UREFS {
+            return Ok(Err(contracts::Error::MaxTotalURefsExceeded.into()));
+        }
+
+        // Ensure given group exists and does not exceed limits
+        let group = match groups.get_mut(&group_label) {
+            Some(group) if group.len() + 1 > contracts::MAX_GROUPS as usize => {
+                // Ensures there are not too many groups to fit in amount of new urefs
+                return Ok(Err(contracts::Error::MaxTotalURefsExceeded.into()));
+            }
+            Some(group) => group,
+            None => return Ok(Err(contracts::Error::GroupDoesNotExist.into())),
+        };
+
+        // Proceed with creating new URefs
+        let new_uref = self.context.new_unit_uref()?;
+        if !group.insert(new_uref) {
+            return Ok(Err(contracts::Error::URefAlreadyExists.into()));
+        }
+
+        // check we can write to the host buffer
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
+        }
+        // create CLValue for return value
+        let new_uref_value = CLValue::from_t(new_uref)?;
+        let value_size = new_uref_value.inner_bytes().len();
+        // write return value to buffer
+        if let Err(err) = self.write_host_buffer(new_uref_value) {
+            return Ok(Err(err));
+        }
+        // Write return value size to output location
+        let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
+        if let Err(error) = self.memory.set(output_size_ptr, &output_size_bytes) {
+            return Err(Error::Interpreter(error.into()));
+        }
+
+        // Write updated package to the global state
+        self.context.state().borrow_mut().write(
+            Key::from(contract_package_hash),
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        Ok(Ok(()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn remove_contract_user_group_urefs(
+        &mut self,
+        package_ptr: u32,
+        package_size: u32,
+        label_ptr: u32,
+        label_size: u32,
+        urefs_ptr: u32,
+        urefs_size: u32,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let contract_package_hash: ContractPackageHash =
+            self.t_from_mem(package_ptr, package_size)?;
+        let label: String = self.t_from_mem(label_ptr, label_size)?;
+        let urefs: BTreeSet<URef> = self.t_from_mem(urefs_ptr, urefs_size)?;
+
+        let mut contract_package = self
+            .context
+            .get_validated_contract_package(contract_package_hash)?;
+
+        let groups = contract_package.groups_mut();
+        let group_label = Group::new(label);
+
+        let group = match groups.get_mut(&group_label) {
+            Some(group) => group,
+            None => return Ok(Err(contracts::Error::GroupDoesNotExist.into())),
+        };
+
+        if urefs.is_empty() {
+            return Ok(Ok(()));
+        }
+
+        for uref in urefs {
+            if !group.remove(&uref) {
+                return Ok(Err(contracts::Error::UnableToRemoveURef.into()));
+            }
+        }
+        // Write updated package to the global state
+        self.context.state().borrow_mut().write(
+            Key::from(contract_package_hash),
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        Ok(Ok(()))
     }
 }
 

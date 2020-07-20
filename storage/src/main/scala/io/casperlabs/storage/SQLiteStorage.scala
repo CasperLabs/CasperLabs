@@ -52,7 +52,8 @@ object SQLiteStorage {
       wrapDagStorage =
         (_: DagStorage[F] with DagRepresentation[F] with FinalityStorage[F] with AncestorsStorage[
           F
-        ]).pure[F]
+        ]).pure[F],
+      wrapEraStorage = (_: EraStorage[F]).pure[F]
     )
 
   def create[F[_]: Sync: Metrics: Time](
@@ -68,14 +69,15 @@ object SQLiteStorage {
         DagStorage[F] with DagRepresentation[F] with FinalityStorage[F] with AncestorsStorage[
           F
         ]
-      ]
+      ],
+      wrapEraStorage: EraStorage[F] => F[EraStorage[F]]
   ): F[CombinedStorage[F]] =
     for {
       blockStorage <- SQLiteBlockStorage.create[F](readXa, writeXa) >>= wrapBlockStorage
       dagStorage <- SQLiteDagStorage
                      .create[F](dagStorageChunkSize, readXa, writeXa) >>= wrapDagStorage
       deployStorage <- SQLiteDeployStorage.create[F](deployStorageChunkSize, readXa, writeXa)
-      eraStorage    <- SQLiteEraStorage.create[F](tickUnit, readXa, writeXa)
+      eraStorage    <- SQLiteEraStorage.create[F](tickUnit, readXa, writeXa) >>= wrapEraStorage
       eventStorage  <- SQLiteEventStorage.create[F](readXa, writeXa)
     } yield new BlockStorage[F]
       with DagStorage[F]
