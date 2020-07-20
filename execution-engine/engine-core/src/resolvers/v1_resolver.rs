@@ -64,29 +64,13 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 4][..], None),
                 FunctionIndex::AddFuncIndex.into(),
             ),
-            "add_local" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 4][..], None),
-                FunctionIndex::AddLocalFuncIndex.into(),
-            ),
             "new_uref" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], None),
                 FunctionIndex::NewFuncIndex.into(),
             ),
-            "get_arg_size" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
-                FunctionIndex::GetArgSizeFuncIndex.into(),
-            ),
-            "get_arg" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
-                FunctionIndex::GetArgFuncIndex.into(),
-            ),
             "ret" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::RetFuncIndex.into(),
-            ),
-            "call_contract" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
-                FunctionIndex::CallContractFuncIndex.into(),
             ),
             "get_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
@@ -103,14 +87,6 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             "gas" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 1][..], None),
                 FunctionIndex::GasFuncIndex.into(),
-            ),
-            "store_function" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 5][..], None),
-                FunctionIndex::StoreFnIndex.into(),
-            ),
-            "store_function_at_hash" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 5][..], None),
-                FunctionIndex::StoreFnAtHashIndex.into(),
             ),
             "is_valid_uref" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
@@ -172,10 +148,6 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 1][..], None),
                 FunctionIndex::GetPhaseIndex.into(),
             ),
-            "upgrade_contract_at_uref" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
-                FunctionIndex::UpgradeContractAtURefIndex.into(),
-            ),
             "get_system_contract" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::GetSystemContractIndex.into(),
@@ -187,6 +159,50 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             "read_host_buffer" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::ReadHostBufferIndex.into(),
+            ),
+            "create_contract_package_at_hash" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 2][..], None),
+                FunctionIndex::CreateContractPackageAtHash.into(),
+            ),
+            "create_contract_user_group" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
+                FunctionIndex::CreateContractUserGroup.into(),
+            ),
+            "add_contract_version" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 10][..], Some(ValueType::I32)),
+                FunctionIndex::AddContractVersion.into(),
+            ),
+            "disable_contract_version" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::DisableContractVersion.into(),
+            ),
+            "call_contract" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 7][..], Some(ValueType::I32)),
+                FunctionIndex::CallContractFuncIndex.into(),
+            ),
+            "call_versioned_contract" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 9][..], Some(ValueType::I32)),
+                FunctionIndex::CallVersionedContract.into(),
+            ),
+            "get_named_arg_size" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
+                FunctionIndex::GetRuntimeArgsizeIndex.into(),
+            ),
+            "get_named_arg" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::GetRuntimeArgIndex.into(),
+            ),
+            "remove_contract_user_group" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::RemoveContractUserGroupIndex.into(),
+            ),
+            "provision_contract_user_group_uref" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
+                FunctionIndex::ExtendContractUserGroupURefsIndex.into(),
+            ),
+            "remove_contract_user_group_urefs" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+                FunctionIndex::RemoveContractUserGroupURefsIndex.into(),
             ),
             #[cfg(feature = "test-support")]
             "print" => FuncInstance::alloc_host(

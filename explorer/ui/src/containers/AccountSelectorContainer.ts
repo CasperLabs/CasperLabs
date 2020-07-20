@@ -1,9 +1,10 @@
 import { action, computed, observable } from 'mobx';
-import { base64to16, decodeBase16 } from 'casperlabs-sdk';
+import { decodeBase16, decodeBase64, encodeBase16, Keys } from 'casperlabs-sdk';
 import { StateChangeOptions } from 'downshift';
 import matchSorter from 'match-sorter';
 import Pages from '../components/Pages';
 import * as H from 'history';
+import { getPublicKeyHashBase16 } from './AuthContainer';
 
 interface AccountKeyWithAlias {
   key: string;
@@ -19,10 +20,10 @@ export default class AccountSelectorContainer {
   @action
   init(accounts: UserAccount[], history: H.History) {
     (accounts || []).forEach(x => {
-      let publicKeyBase16 = base64to16(x.publicKeyBase64);
+      let publicKeyHashBase16 = getPublicKeyHashBase16(x);
       this.accountNameToKeys.set(
-        `${x.name} (${publicKeyBase16})`,
-        publicKeyBase16
+        `${x.name} (${publicKeyHashBase16})`,
+        publicKeyHashBase16
       );
     });
     this.history = history;
@@ -51,11 +52,11 @@ export default class AccountSelectorContainer {
   @computed
   get check() {
     if (!this.inputValue) {
-      return 'Account Public Key cannot be empty.';
+      return 'Account Public Key Hash cannot be empty.';
     }
 
     if (this.inputValue.length < 64) {
-      return 'Account Public Key has to be 64 characters long.';
+      return 'Account Public Key Hash has to be 64 characters long.';
     }
 
     try {

@@ -4,7 +4,7 @@ use std::{
 };
 
 use engine_core::engine_state::deploy_item::DeployItem;
-use types::account::PublicKey;
+use types::account::AccountHash;
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
@@ -12,20 +12,20 @@ impl TryFrom<ipc::DeployItem> for DeployItem {
     type Error = MappingError;
 
     fn try_from(mut pb_deploy_item: ipc::DeployItem) -> Result<Self, Self::Error> {
-        let address = PublicKey::ed25519_try_from(pb_deploy_item.get_address())
-            .map_err(|_| MappingError::invalid_public_key_length(pb_deploy_item.address.len()))?;
+        let address = AccountHash::try_from(pb_deploy_item.get_address())
+            .map_err(|_| MappingError::invalid_account_hash_length(pb_deploy_item.address.len()))?;
 
         let session = pb_deploy_item
             .take_session()
             .payload
-            .map(Into::into)
-            .ok_or_else(|| MappingError::MissingPayload)?;
+            .ok_or_else(|| MappingError::MissingPayload)?
+            .try_into()?;
 
         let payment = pb_deploy_item
             .take_payment()
             .payload
-            .map(Into::into)
-            .ok_or_else(|| MappingError::MissingPayload)?;
+            .ok_or_else(|| MappingError::MissingPayload)?
+            .try_into()?;
 
         let gas_price = pb_deploy_item.get_gas_price();
 
@@ -33,10 +33,10 @@ impl TryFrom<ipc::DeployItem> for DeployItem {
             .get_authorization_keys()
             .iter()
             .map(|raw: &Vec<u8>| {
-                PublicKey::ed25519_try_from(raw.as_slice())
-                    .map_err(|_| MappingError::invalid_public_key_length(raw.len()))
+                AccountHash::try_from(raw.as_slice())
+                    .map_err(|_| MappingError::invalid_account_hash_length(raw.len()))
             })
-            .collect::<Result<BTreeSet<PublicKey>, Self::Error>>()?;
+            .collect::<Result<BTreeSet<AccountHash>, Self::Error>>()?;
 
         let deploy_hash = pb_deploy_item.get_deploy_hash().try_into().map_err(|_| {
             MappingError::invalid_deploy_hash_length(pb_deploy_item.deploy_hash.len())

@@ -1,4 +1,4 @@
-use types::{account::PublicKey, BlockTime, Key, Phase};
+use types::{account::AccountHash, BlockTime, Key, Phase};
 
 pub trait RuntimeProvider {
     fn get_key(&self, name: &str) -> Option<Key>;
@@ -11,5 +11,5 @@ pub trait RuntimeProvider {
 
     fn get_block_time(&self) -> BlockTime;
 
-    fn get_caller(&self) -> PublicKey;
+    fn get_caller(&self) -> AccountHash;
 }

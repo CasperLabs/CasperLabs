@@ -31,6 +31,12 @@ bitflags! {
     }
 }
 
+impl Default for AccessRights {
+    fn default() -> Self {
+        AccessRights::NONE
+    }
+}
+
 impl AccessRights {
     /// Returns `true` if the `READ` flag is set.
     pub fn is_readable(self) -> bool {

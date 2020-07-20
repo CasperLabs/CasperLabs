@@ -2,9 +2,11 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::account::Weight;
+use types::{account::Weight, runtime_args, RuntimeArgs};
 
 const CONTRACT_EE_539_REGRESSION: &str = "ee_539_regression.wasm";
+const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";
+const ARG_DEPLOYMENT_THRESHOLD: &str = "deployment_threshold";
 
 #[ignore]
 #[test]
@@ -14,9 +16,9 @@ fn should_run_ee_539_serialize_action_thresholds_regression() {
     let exec_request = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_539_REGRESSION,
-        (Weight::new(4), Weight::new(3)),
+        runtime_args! { ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(4), ARG_DEPLOYMENT_THRESHOLD => Weight::new(3) },
     )
-    .build();
+        .build();
 
     let _result = InMemoryWasmTestBuilder::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)

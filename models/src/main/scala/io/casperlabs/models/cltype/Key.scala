@@ -36,16 +36,6 @@ object Key {
     val tag: Byte = 2
   }
 
-  case class Local(seed: ByteArray32, hash: ByteArray32) extends Key {
-    override protected val tag: Byte = Local.tag
-    protected def innerToBytes: Array[Byte] =
-      ToBytes[ByteArray32].toBytes(seed) ++ ToBytes[ByteArray32].toBytes(hash)
-  }
-
-  object Local {
-    val tag: Byte = 3
-  }
-
   implicit val toBytesKey: ToBytes[Key] = new ToBytes[Key] {
     override def toBytes(k: Key): Array[Byte] =
       k.tag +: k.innerToBytes
@@ -57,11 +47,6 @@ object Key {
         ByteArray32.deserializer.map[Key](address => Account(address))
       case tag if tag == Hash.tag => ByteArray32.deserializer.map[Key](address => Hash(address))
       case tag if tag == URef.tag => cltype.URef.deserializer.map[Key](uref => URef(uref))
-      case tag if tag == Local.tag =>
-        for {
-          seed <- ByteArray32.deserializer
-          hash <- ByteArray32.deserializer
-        } yield Local(seed, hash)
-      case other => FromBytes.raise(FromBytes.Error.InvalidVariantTag(other, "Key"))
+      case other                  => FromBytes.raise(FromBytes.Error.InvalidVariantTag(other, "Key"))
     }
 }

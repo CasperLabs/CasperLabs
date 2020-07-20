@@ -4,7 +4,7 @@ use engine_shared::{
     stored_value::StoredValue, transform::Transform,
 };
 use engine_storage::global_state::StateReader;
-use types::{CLValue, Key};
+use types::{bytesrepr::FromBytes, CLTyped, CLValue, Key};
 
 fn make_payment_error_effects(
     max_payment_cost: Motes,
@@ -192,6 +192,14 @@ impl ExecutionResult {
             effect,
             cost,
         }
+    }
+
+    pub fn take_with_ret<T: FromBytes + CLTyped>(self, ret: T) -> (Option<T>, Self) {
+        (Some(ret), self)
+    }
+
+    pub fn take_without_ret<T: FromBytes + CLTyped>(self) -> (Option<T>, Self) {
+        (None, self)
     }
 }
 

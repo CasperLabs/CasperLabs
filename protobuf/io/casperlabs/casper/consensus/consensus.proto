@@ -7,7 +7,7 @@ import "io/casperlabs/casper/consensus/state.proto";
 // on the subject; for example if it's a block then the key is actually part of the data
 // that needs to be signed over.
 message Signature {
-    // One of the supported algorithms: ed25519, secp256k1
+    // One of the supported algorithms: ed25519, secp256k1, secp256r1
     string sig_algorithm = 1;
     bytes sig = 2;
 }
@@ -36,7 +36,7 @@ message Deploy {
         // Removed the nonce.
         reserved 2;
         // Identifying the Account is the key used to sign the Deploy.
-        bytes account_public_key = 1;
+        bytes account_public_key_hash = 1;
         // Current time milliseconds.
         uint64 timestamp = 3;
         // Conversion rate between the cost of Wasm opcodes and the motes sent by the `payment_code`.
@@ -70,29 +70,54 @@ message Deploy {
     // Includes both binary instructions (wasm) and optionally, arguments
     // to those instructions encoded via our ABI
     message Code {
-        // Previously was ABI encoded args (directly as bytes); no longer
-        // supported, use `args` instead.
-        reserved 2;
+        // XXX: For the JS serializer the order of fields matters.
+        //      See https://casperlabs.atlassian.net/browse/TNET-45
+
+        // Keyword arguments.
+        repeated Arg args = 1;
+
         oneof contract {
-            // Wasm byte code.
-            bytes wasm = 1;
-            // Public hash address of an already stored contract.
-            bytes hash = 3;
-            // Name of a stored contract associated with the executing account (uref or hash).
-            string name = 4;
-            // URef of a stored contract.
-            bytes uref = 5;
+            WasmContract wasm_contract = 2;
+            StoredContract stored_contract = 3;
+            StoredVersionedContract stored_versioned_contract = 4;
+            TransferContract transfer_contract = 5;
         }
-        // Keyword arguments. Note that while the execution engine works with the original
-        // positional argument passing style, the order of the arguments matters.
-        repeated Arg args = 6;
+
+        message WasmContract {
+            bytes wasm = 1;
+        }
+
+        message StoredVersionedContract {
+            oneof address {
+                // Package hash address of already stored contract.
+                bytes package_hash = 1;
+                // Name of a key that contains a package hash.
+                string name = 2;
+            }
+            // Name of the entry method in the contract.
+            string entry_point = 3;
+            // Optionally specify the exact version; 0 means use the highest available.
+            uint32 version = 4;
+        }
+
+        message StoredContract {
+            oneof address {
+                // Public hash address of an already stored contract.
+                bytes contract_hash = 1;
+                // Name of a stored contract associated with the executing account (uref or hash).
+                string name = 2;
+            }
+            // Name of the entry method in the contract.
+            string entry_point = 3;
+        }
+
+        // Built-in transfer, bypassing the WASM execution.
+        message TransferContract {}
     }
 
     message Arg {
         reserved 2; // old state.Value representation of args
         string name = 1;
-        // Note that until the EE doesn't support kwargs directly, missing an Empty values are
-        // not allowed because they would be ambiguous.
         state.CLValueInstance value = 3;
     }
 
@@ -160,6 +185,7 @@ message Block {
         string chain_name = 8;
         uint32 validator_block_seq_num = 9;
         bytes validator_public_key = 10;
+        bytes validator_public_key_hash = 20;
         // The hash of the previous block (or ballot) from this validator.
         // It has to be stated even if it's part of the justifications directly,
         // and it must be part of the j-past-cone of the block, in case transitive
@@ -212,7 +238,7 @@ message Block {
     }
 
     message Justification {
-        bytes validator_public_key = 1;
+        bytes validator_public_key_hash = 1;
         bytes latest_block_hash = 2;
     }
 
@@ -237,7 +263,7 @@ message Block {
 
 message Bond {
     reserved 2; // Original bond was uint64.
-    bytes validator_public_key = 1;
+    bytes validator_public_key_hash = 1;
     state.BigInt stake = 3;
 }
 

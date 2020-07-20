@@ -80,7 +80,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
   //TODO pull out
   implicit val functorRaiseInvalidBlock = validation.raiseValidateErrorThroughApplicativeError[F]
 
-  type Validator = ByteString
+  type Validator = DagRepresentation.Validator
 
   /** Add a block if it hasn't been added yet. */
   def addBlock(
@@ -92,7 +92,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
             Block
         ) => F[BlockStatus]
     ): F[BlockStatus] =
-      validatorSemaphoreMap.withPermit(block.getHeader.validatorPublicKey) {
+      validatorSemaphoreMap.withPermit(block.getHeader.validatorPublicKeyHash) {
         for {
           dag       <- DagStorage[F].getRepresentation
           blockHash = block.blockHash
@@ -214,7 +214,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
   def estimator(
       dag: DagRepresentation[F],
       lfbHash: BlockHash,
-      latestMessagesHashes: Map[ByteString, Set[BlockHash]],
+      latestMessagesHashes: Map[Validator, Set[BlockHash]],
       equivocators: Set[Validator]
   ): F[NonEmptyList[BlockHash]] =
     Metrics[F].timer("estimator") {
@@ -240,7 +240,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
    *  produced (no deploys, already processing, no validator id)
    */
   def createMessage(canCreateBallot: Boolean): F[CreateBlockStatus] = validatorId match {
-    case Some(ValidatorIdentity(publicKey, privateKey, sigAlgorithm)) =>
+    case Some(validator) =>
       Metrics[F].timer("createBlock") {
         for {
           dag                 <- dag
@@ -284,7 +284,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
           }.forkAndLog
 
           timestamp <- Time[F].currentMillis
-          props     <- CreateMessageProps(publicKey, latestMessages, merged)
+          props     <- CreateMessageProps(validator.publicKeyHashBS, latestMessages, merged)
           remainingHashes <- DeployBuffer[F].remainingDeploys(
                               dag,
                               parents.map(_.blockHash).toSet,
@@ -298,9 +298,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
                          latestMessages,
                          merged,
                          remainingHashes,
-                         publicKey,
-                         privateKey,
-                         sigAlgorithm,
+                         validator,
                          timestamp,
                          lfbHash
                        )
@@ -308,9 +306,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
                        createBallot(
                          latestMessages,
                          merged,
-                         publicKey,
-                         privateKey,
-                         sigAlgorithm,
+                         validator,
                          lfbHash
                        )
                      } else {
@@ -318,7 +314,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
                      }
           signedBlock = proposal match {
             case Created(block) =>
-              Created(signBlock(block, privateKey, sigAlgorithm))
+              Created(signBlock(block, validator.privateKey, validator.signatureAlgorithm))
             case _ => proposal
           }
         } yield signedBlock
@@ -345,22 +341,27 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
   )
   private object CreateMessageProps {
     def apply(
-        validatorId: Keys.PublicKey,
-        latestMessages: Map[ByteString, Set[Message]],
+        validatorId: Validator,
+        latestMessages: Map[Validator, Set[Message]],
         merged: ExecEngineUtil.MergeResult[ExecEngineUtil.TransformMap, Block]
     ): F[CreateMessageProps] = {
       // We ensure that only the justifications given in the block are those
       // which are bonded validators in the chosen parent. This is safe because
       // any latest message not from a bonded validator will not change the
       // final fork-choice.
-      val bondedValidators = bonds(merged.parents.head).map(_.validatorPublicKey).toSet
-      val bondedLatestMsgs = latestMessages.filter { case (v, _) => bondedValidators.contains(v) }
+      val bondedValidators =
+        bonds(merged.parents.head).map(_.validatorPublicKeyHash).toSet
+
+      val bondedLatestMsgs = latestMessages.filter {
+        case (v, _) => bondedValidators(v)
+      }
       // TODO: Remove redundant justifications.
       val justifications = toJustification(latestMessages.values.flatten.toSeq)
       // Start numbering from 1 (validator's first block seqNum = 1)
       val latestMessage = latestMessages
-        .get(ByteString.copyFrom(validatorId))
+        .get(validatorId)
         .map(_.maxBy(_.validatorMsgSeqNum))
+
       val validatorSeqNum        = latestMessage.fold(1)(_.validatorMsgSeqNum + 1)
       val validatorPrevBlockHash = latestMessage.fold(ByteString.EMPTY)(_.messageHash)
       for {
@@ -393,12 +394,10 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
   private def createProposal(
       dag: DagRepresentation[F],
       props: CreateMessageProps,
-      latestMessages: Map[ByteString, Set[Message]],
+      latestMessages: Map[Validator, Set[Message]],
       merged: ExecEngineUtil.MergeResult[ExecEngineUtil.TransformMap, Block],
       remainingHashes: Set[ByteString],
-      validatorId: Keys.PublicKey,
-      privateKey: Keys.PrivateKey,
-      sigAlgorithm: SignatureAlgorithm,
+      validator: ValidatorIdentity,
       timestamp: Long,
       lfbHash: BlockHash
   ): F[CreateBlockStatus] =
@@ -440,9 +439,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
                          timestamp,
                          props.jRank,
                          props.mainRank,
-                         validatorId,
-                         privateKey,
-                         sigAlgorithm,
+                         validator,
                          lfbHash,
                          roundId = 0,
                          magicBit = false
@@ -468,16 +465,14 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
     }
 
   private def createBallot(
-      latestMessages: Map[ByteString, Set[Message]],
+      latestMessages: Map[Validator, Set[Message]],
       merged: ExecEngineUtil.MergeResult[ExecEngineUtil.TransformMap, Block],
-      validatorId: Keys.PublicKey,
-      privateKey: Keys.PrivateKey,
-      sigAlgorithm: SignatureAlgorithm,
+      validator: ValidatorIdentity,
       keyBlockHash: ByteString
   ): F[CreateBlockStatus] =
     for {
       now    <- Time[F].currentMillis
-      props  <- CreateMessageProps(validatorId, latestMessages, merged)
+      props  <- CreateMessageProps(validator.publicKeyHashBS, latestMessages, merged)
       parent = merged.parents.head
       block = ProtoUtil.ballot(
         props.justifications,
@@ -491,9 +486,7 @@ class MultiParentCasperImpl[F[_]: Concurrent: Log: Metrics: Time: BlockStorage: 
         now,
         props.jRank,
         props.mainRank,
-        validatorId,
-        privateKey,
-        sigAlgorithm,
+        validator,
         keyBlockHash,
         roundId = 0
       )
@@ -577,7 +570,7 @@ object MultiParentCasperImpl {
   /** Component purely to validate, execute and store blocks.
     * Even the Genesis, to create it in the first place. */
   class StatelessExecutor[F[_]: Sync: Time: Log: BlockStorage: DagStorage: DeployStorage: ExecutionEngineService: Metrics: DeployStorageWriter: Validation: CasperLabsProtocol: Fs2Compiler: BlockEventEmitter](
-      validatorId: Option[Keys.PublicKey],
+      validatorId: Option[Keys.PublicKeyHashBS],
       chainName: String,
       upgrades: Seq[ipc.ChainSpec.UpgradePoint],
       // NOTE: There was a race condition where probably a block was being removed at the same time
@@ -671,7 +664,7 @@ object MultiParentCasperImpl {
             (invalid: BlockStatus).pure[F]
 
           case Left(ValidateErrorWrapper(EquivocatedBlock))
-              if validatorId.map(ByteString.copyFrom).exists(_ == block.validatorPublicKey) =>
+              if validatorId.contains(block.validatorPublicKeyHash) =>
             addEffects(SelfEquivocatedBlock, block, BlockEffects.empty).as(SelfEquivocatedBlock)
 
           case Left(ValidateErrorWrapper(invalid)) =>
@@ -809,7 +802,7 @@ object MultiParentCasperImpl {
     }
 
     def create[F[_]: Concurrent: Time: Log: BlockStorage: DagStorage: ExecutionEngineService: Metrics: DeployStorage: Validation: CasperLabsProtocol: Fs2Compiler: BlockEventEmitter](
-        validatorId: Option[Keys.PublicKey],
+        validatorId: Option[Keys.PublicKeyHashBS],
         chainName: String,
         upgrades: Seq[ipc.ChainSpec.UpgradePoint]
     ): F[StatelessExecutor[F]] =
@@ -835,10 +828,7 @@ object MultiParentCasperImpl {
         relaying: gossiping.relaying.BlockRelaying[F]
     ): Broadcaster[F] = new Broadcaster[F] {
 
-      private val maybeOwnPublicKey = validatorId map {
-        case ValidatorIdentity(publicKey, _, _) =>
-          ByteString.copyFrom(publicKey)
-      }
+      private val maybeOwnPublicKeHash = validatorId.map(_.publicKeyHashBS)
 
       def networkEffects(
           block: Block,
@@ -846,8 +836,8 @@ object MultiParentCasperImpl {
       ): F[Unit] =
         status match {
           case Valid | EquivocatedBlock =>
-            maybeOwnPublicKey match {
-              case Some(key) if key == block.getHeader.validatorPublicKey =>
+            maybeOwnPublicKeHash match {
+              case Some(key) if key == block.getHeader.validatorPublicKeyHash =>
                 relaying.relay(block).void
               case _ =>
                 // We were adding somebody else's block. The DownloadManager did the gossiping.

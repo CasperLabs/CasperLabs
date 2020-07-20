@@ -1,3 +1,12 @@
+/**
+ * Encodes an UTF8 string into bytes.
+ * @param str Input string.
+ */
+export function encodeUTF8(str: String): Uint8Array {
+  let utf8Bytes = String.UTF8.encode(str);
+  return Uint8Array.wrap(utf8Bytes);
+}
+
 /** Converts typed array to array */
 export function typedToArray(arr: Uint8Array): Array<u8> {
   let result = new Array<u8>(arr.length);
@@ -57,3 +66,4 @@ export function checkTypedArrayEqual(a: Uint8Array, b: Uint8Array, len: i32 = 0)
   }
   return true;
 }
+

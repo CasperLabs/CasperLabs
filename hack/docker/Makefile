@@ -144,8 +144,8 @@ slow:
 	@# Create a `faucet-account` to hold some initial tokens to distribute.
 	mkdir -p keys/faucet-account
 	../key-management/docker-gen-account-keys.sh keys/faucet-account
-	FAUCET_ID="$$(cat keys/faucet-account/account-id-hex)" ; \
-	echo "$$FAUCET_ID,1000000000000000000,0" > .casperlabs/chainspec/genesis/accounts.csv
+	FAUCET_PK="$$(cat keys/faucet-account/account-pk-hex)" ; \
+	echo "$$FAUCET_PK,ed25519,1000000000000000000,0" > .casperlabs/chainspec/genesis/accounts.csv
 
 	@# Create bonded validators with 0 balance.
 	bash -c 'i=0 ; while [[ $$i -lt $(CL_CASPER_NUM_VALIDATORS) ]] ; do \
@@ -155,8 +155,8 @@ slow:
 		../key-management/docker-gen-keys.sh .casperlabs/nodes/node-$$i ; \
 		../key-management/docker-gen-account-keys.sh keys/account-$$i ; \
 		BOND=$$(( $(CL_CASPER_NUM_VALIDATORS)*10+$$i )) ; \
-		VALIDATOR_ID="$$(cat .casperlabs/nodes/node-$$i/validator-id-hex)" ; \
-		echo "$$VALIDATOR_ID,0,$$BOND" >> .casperlabs/chainspec/genesis/accounts.csv ; \
+		VALIDATOR_PK="$$(cat .casperlabs/nodes/node-$$i/validator-pk-hex)" ; \
+		echo "$$VALIDATOR_PK,ed25519,0,$$BOND" >> .casperlabs/chainspec/genesis/accounts.csv ; \
 		((i = i + 1)) ; \
 	done'
 

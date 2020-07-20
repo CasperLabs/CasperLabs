@@ -9,6 +9,7 @@ import com.github.ghik.silencer.silent
 import com.google.protobuf.ByteString
 import fs2.interop.reactivestreams._
 import io.casperlabs.casper
+import io.casperlabs.casper.ValidatorIdentity
 import io.casperlabs.casper.MultiParentCasperImpl.Broadcaster
 import io.casperlabs.casper.consensus.info.DeployInfo
 import io.casperlabs.casper.consensus.{Block, BlockSummary, Deploy, DeploySummary}
@@ -42,7 +43,7 @@ import scala.concurrent.duration.{FiniteDuration, _}
 class GossipServiceCasperTestNode[F[_]](
     local: Node,
     genesis: consensus.Block,
-    sk: PrivateKey,
+    validatorId: ValidatorIdentity,
     semaphoresMap: SemaphoreMap[F, ByteString],
     semaphore: Semaphore[F],
     maybeMakeEE: Option[HashSetCasperTestNode.MakeExecutionEngineService[F]] = None,
@@ -66,7 +67,7 @@ class GossipServiceCasperTestNode[F[_]](
     val logEff: LogStub with LogIO[F]
 ) extends HashSetCasperTestNode[F](
       local,
-      sk,
+      validatorId,
       genesis,
       maybeMakeEE
     ) (
@@ -95,7 +96,7 @@ class GossipServiceCasperTestNode[F[_]](
     new MultiParentCasperImpl[F](
       semaphoresMap,
       new MultiParentCasperImpl.StatelessExecutor[F](
-        Some(validatorId.publicKey),
+        Some(validatorId.publicKeyHashBS),
         chainName,
         upgrades = Nil,
         semaphore
@@ -126,7 +127,7 @@ trait GossipServiceCasperTestNodeFactory extends HashSetCasperTestNodeFactory {
 
   override def standaloneF[F[_]](
       genesis: consensus.Block,
-      sk: PrivateKey,
+      validatorId: ValidatorIdentity,
       storageSize: Long = 1024L * 1024 * 10,
       faultToleranceThreshold: Double = 0.1
   )(
@@ -189,7 +190,7 @@ trait GossipServiceCasperTestNodeFactory extends HashSetCasperTestNodeFactory {
           node = new GossipServiceCasperTestNode[F](
             identity,
             genesis,
-            sk,
+            validatorId,
             semaphoreMap,
             semaphore,
             relaying = relaying,
@@ -216,7 +217,7 @@ trait GossipServiceCasperTestNodeFactory extends HashSetCasperTestNodeFactory {
   }
 
   override def networkF[F[_]](
-      sks: IndexedSeq[PrivateKey],
+      validatorIds: IndexedSeq[ValidatorIdentity],
       genesis: consensus.Block,
       storageSize: Long = 1024L * 1024 * 10,
       faultToleranceThreshold: Double = 0.1,
@@ -229,7 +230,7 @@ trait GossipServiceCasperTestNodeFactory extends HashSetCasperTestNodeFactory {
       contextShift: ContextShift[F],
       scheduler: Scheduler
   ): F[IndexedSeq[GossipServiceCasperTestNode[F]]] = {
-    val n     = sks.length
+    val n     = validatorIds.length
     val names = (0 until n).map(i => s"node-$i")
     val peers = names.map(peerNode(_, 40400))
 
@@ -239,10 +240,10 @@ trait GossipServiceCasperTestNodeFactory extends HashSetCasperTestNodeFactory {
     implicit val timeEff = new LogicalTime[F]
 
     val nodesF = peers
-      .zip(sks)
+      .zip(validatorIds)
       .toList
       .traverse {
-        case (peer, sk) =>
+        case (peer, validatorId) =>
           implicit val log       = LogStub[F](peer.host, printEnabled = false)
           implicit val metricEff = new Metrics.MetricsNOP[F]
           implicit val emitter   = NoOpsEventEmitter.create[F]
@@ -299,7 +300,7 @@ trait GossipServiceCasperTestNodeFactory extends HashSetCasperTestNodeFactory {
                 node = new GossipServiceCasperTestNode[F](
                   peer,
                   genesis,
-                  sk,
+                  validatorId,
                   semaphoreMap,
                   semaphore,
                   relaying = relaying,

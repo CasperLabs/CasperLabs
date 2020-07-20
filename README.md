@@ -13,6 +13,7 @@ We strive to scale opportunity for everyone - forever.  Read more about our miss
 
 ## Current Development Status
 The status on development is reported during the Community calls and is found [here](https://github.com/CasperLabs/Governance/wiki/Current-Status)
+
 The CasperLabs Testnet is live!  
 - Transactions can be sent to: deploy.casperlabs.io
 - [Clarity Block Exporer](https://clarity.casperlabs.io)

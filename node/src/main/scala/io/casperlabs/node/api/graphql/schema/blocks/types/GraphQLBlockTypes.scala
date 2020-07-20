@@ -84,7 +84,7 @@ class GraphQLBlockTypes(
         "account",
         AccountType,
         "Account related information".some,
-        resolve = c => c.value.getHeader.accountPublicKey
+        resolve = c => c.value.getHeader.accountPublicKeyHash
       ),
       Field(
         "timestamp",
@@ -147,15 +147,15 @@ class GraphQLBlockTypes(
     () =>
       fields[Unit, Validator](
         Field(
-          "publicKeyBase16",
+          "publicKeyHashBase16",
           StringType,
-          "Validator's public key in Base16 encoding".some,
+          "Validator's public key hash in Base16 encoding".some,
           resolve = c => c.value.toByteArray.base16Encode
         ),
         Field(
-          "publicKeyBase64",
+          "publicKeyHashBase64",
           StringType,
-          "Validator's public key in Base64 encoding".some,
+          "Validator's public key hash in Base64 encoding".some,
           resolve = c => c.value.toByteArray.base64Encode
         ),
         Field(
@@ -179,15 +179,15 @@ class GraphQLBlockTypes(
     () =>
       fields[Unit, AccountKey](
         Field(
-          "publicKeyBase16",
+          "accountHashBase16",
           StringType,
-          "Account's public key in Base16 encoding".some,
+          "Account's public key hash in Base16 encoding".some,
           resolve = c => c.value.toByteArray.base16Encode
         ),
         Field(
-          "publicKeyBase64",
+          "accountHashBase64",
           StringType,
-          "Account's public key in Base64 encoding".some,
+          "Account's public key hash in Base64 encoding".some,
           resolve = c => c.value.toByteArray.base64Encode
         ),
         Field(
@@ -279,7 +279,7 @@ class GraphQLBlockTypes(
           "validator",
           ValidatorType,
           "Validator related information".some,
-          resolve = c => c.value._1.getSummary.validatorPublicKey
+          resolve = c => c.value._1.getSummary.validatorPublicKeyHash
         ),
         Field(
           "validatorBlockSeqNum",
@@ -292,6 +292,12 @@ class GraphQLBlockTypes(
           StringType,
           "Chain name of where the block was created".some,
           resolve = c => c.value._1.getSummary.chainName
+        ),
+        Field(
+          "validatorPublicKey",
+          StringType,
+          "Validator's public key in Base16 encoding".some,
+          resolve = c => Base16.encode(c.value._1.getSummary.validatorPublicKey.toByteArray)
         ),
         Field(
           "signature",

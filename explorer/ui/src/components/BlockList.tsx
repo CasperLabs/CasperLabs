@@ -1,10 +1,9 @@
-import React, { Component } from 'react';
+import React from 'react';
 import { observer } from 'mobx-react';
 import DagContainer, { DagStep } from '../containers/DagContainer';
 import {
   IconButton,
   ListInline,
-  RefreshableComponent,
   shortHash
 } from './Utils';
 import DataTable from './DataTable';
@@ -26,10 +25,7 @@ export interface Props extends RouteComponentProps<{}> {
 class _BlockList extends React.Component<Props, {}> {
   constructor(props: Props) {
     super(props);
-    let maxRank = parseInt(props.maxRank || '') || 0;
-    let depth = parseInt(props.depth || '') || 10;
-    this.props.dag.updateMaxRankAndDepth(maxRank, depth);
-    this.props.dag.refreshBlockDagAndSetupSubscriber();
+    this.props.dag.refreshWithDepthAndMaxRank(props.maxRank, props.depth);
   }
 
   async refresh() {
@@ -39,6 +35,14 @@ class _BlockList extends React.Component<Props, {}> {
   componentWillUnmount() {
     // release websocket if necessary
     this.props.dag.toggleableSubscriber.unsubscribeAndFree();
+  }
+
+  // when receive new props of depth and maxRank, we need parse them and set related state variables.
+  componentWillReceiveProps(nextProps: Props) {
+    if (this.props.depth === nextProps.depth && this.props.maxRank === nextProps.maxRank) {
+      return;
+    }
+    this.props.dag.refreshWithDepthAndMaxRank(nextProps.maxRank, nextProps.depth);
   }
 
   render() {

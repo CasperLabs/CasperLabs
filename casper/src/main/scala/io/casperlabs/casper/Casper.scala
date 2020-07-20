@@ -33,7 +33,7 @@ trait MultiParentCasper[F[_]] {
   def estimator(
       dag: DagRepresentation[F],
       lfbHash: ByteString,
-      latestMessages: Map[ByteString, Set[ByteString]],
+      latestMessages: Map[DagRepresentation.Validator, Set[ByteString]],
       equivocators: Set[Validator]
   ): F[NonEmptyList[ByteString]]
   def createMessage(canCreateBallot: Boolean): F[CreateBlockStatus]
@@ -87,7 +87,7 @@ sealed abstract class MultiParentCasperInstances {
                                                      )
       semaphoreMap <- SemaphoreMap[F, ByteString](1)
       statelessExecutor <- MultiParentCasperImpl.StatelessExecutor
-                            .create[F](validatorId.map(_.publicKey), chainName, upgrades)
+                            .create[F](validatorId.map(_.publicKeyHashBS), chainName, upgrades)
       casper <- MultiParentCasperImpl.create[F](
                  semaphoreMap,
                  statelessExecutor,

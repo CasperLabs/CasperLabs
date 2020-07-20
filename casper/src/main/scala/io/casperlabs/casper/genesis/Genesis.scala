@@ -10,14 +10,14 @@ import cats.{Applicative, MonadError}
 import com.github.ghik.silencer.silent
 import com.google.protobuf.ByteString
 import io.casperlabs.storage.block.BlockStorage
-import io.casperlabs.casper.{CasperConf, PrettyPrinter}
+import io.casperlabs.casper.{CasperConf, PrettyPrinter, ValidatorIdentity}
 import io.casperlabs.casper.consensus._
 import io.casperlabs.casper.consensus.state.ProtocolVersion
 import io.casperlabs.casper.util.ProtoUtil.{blockHeader, deployDataToEEDeploy, unsignedBlockProto}
 import io.casperlabs.casper.util.{CasperLabsProtocol, ProtoUtil}
 import io.casperlabs.catscontrib.MonadThrowable
 import io.casperlabs.crypto.Keys
-import io.casperlabs.crypto.Keys.PublicKey
+import io.casperlabs.crypto.Keys.PublicKeyHash
 import io.casperlabs.ipc
 import io.casperlabs.ipc.RunGenesisRequest
 import io.casperlabs.shared.Sorting._
@@ -55,18 +55,13 @@ object Genesis {
       // Sorted list of bonded validators.
       bonds = genesisConfig.getEeConfig.accounts
         .sortBy { x =>
-          x.publicKey -> x.getBondedAmount.value
+          x.publicKeyHash -> x.getBondedAmount.value
         }
         .collect {
           case account if account.bondedAmount.isDefined && account.getBondedAmount.value != "0" =>
-            PublicKey(account.publicKey.toByteArray) -> account.bondedAmount
+            Bond(account.publicKeyHash, account.bondedAmount)
         }
         .toSeq
-        .map {
-          case (pk, stake) =>
-            val validator = ByteString.copyFrom(pk)
-            Bond(validator, stake)
-        }
 
       state = Block
         .GlobalState()
@@ -80,7 +75,7 @@ object Genesis {
 
       header = blockHeader(
         body,
-        creator = Keys.PublicKey(Array.emptyByteArray), // Genesis has no creator
+        creator = ValidatorIdentity.empty, // Genesis has no creator
         parentHashes = Nil,
         justifications = Nil,
         state = state,

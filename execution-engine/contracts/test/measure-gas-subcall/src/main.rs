@@ -3,13 +3,20 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String};
+use alloc::string::String;
 
 use contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, CLValue, Phase};
+use types::{
+    contracts::Parameters, ApiError, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Phase, RuntimeArgs,
+};
+
+const ARG_TARGET: &str = "target_contract";
+const NOOP_EXT: &str = "noop_ext";
+const GET_PHASE_EXT: &str = "get_phase_ext";
 
 #[repr(u16)]
 enum CustomError {
@@ -28,14 +35,41 @@ pub extern "C" fn noop_ext() {
     runtime::ret(CLValue::from_t(()).unwrap_or_revert())
 }
 
+fn store() -> (ContractHash, ContractVersion) {
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
+
+        let entry_point_1 = EntryPoint::new(
+            NOOP_EXT,
+            Parameters::default(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
+        entry_points.add_entry_point(entry_point_1);
+
+        let entry_point_2 = EntryPoint::new(
+            GET_PHASE_EXT,
+            Parameters::default(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
+        entry_points.add_entry_point(entry_point_2);
+
+        entry_points
+    };
+    storage::new_contract(entry_points, None, None, None)
+}
+
 #[no_mangle]
 pub extern "C" fn call() {
     const NOOP_EXT: &str = "noop_ext";
     const GET_PHASE_EXT: &str = "get_phase_ext";
 
-    let method_name: String = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let method_name: String = runtime::get_named_arg(ARG_TARGET);
     match method_name.as_str() {
         "no-subcall" => {
             let phase = runtime::get_phase();
@@ -44,12 +78,13 @@ pub extern "C" fn call() {
             }
         }
         "do-nothing" => {
-            let reference = storage::store_function_at_hash(NOOP_EXT, BTreeMap::new());
-            runtime::call_contract::<_, ()>(reference, ());
+            let (reference, _contract_version) = store();
+            runtime::call_contract(reference, NOOP_EXT, RuntimeArgs::default())
         }
         "do-something" => {
-            let reference = storage::store_function_at_hash(GET_PHASE_EXT, BTreeMap::new());
-            let phase: Phase = runtime::call_contract(reference, ());
+            let (reference, _contract_version) = store();
+            let phase: Phase =
+                runtime::call_contract(reference, GET_PHASE_EXT, RuntimeArgs::default());
             if phase != Phase::Session {
                 runtime::revert(ApiError::User(CustomError::UnexpectedPhaseSub as u16))
             }

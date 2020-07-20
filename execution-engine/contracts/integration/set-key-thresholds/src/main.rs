@@ -10,11 +10,6 @@ use types::{
     ApiError,
 };
 
-enum Arg {
-    KeyManagement = 0,
-    Deploy,
-}
-
 #[repr(u16)]
 enum Error {
     SetKeyManagementThreshold = 100,
@@ -27,14 +22,13 @@ impl Into<ApiError> for Error {
     }
 }
 
+const ARG_KM_WEIGHT: &str = "km_weight";
+const ARG_DEP_WEIGHT: &str = "dep_weight";
+
 #[no_mangle]
 pub extern "C" fn call() {
-    let km_weight: u32 = runtime::get_arg(Arg::KeyManagement as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let dep_weight: u32 = runtime::get_arg(Arg::Deploy as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let km_weight: u32 = runtime::get_named_arg(ARG_KM_WEIGHT);
+    let dep_weight: u32 = runtime::get_named_arg(ARG_DEP_WEIGHT);
     let key_management_threshold = Weight::new(km_weight as u8);
     let deploy_threshold = Weight::new(dep_weight as u8);
 

@@ -2,7 +2,7 @@ use engine_shared::stored_value::StoredValue;
 use engine_storage::global_state::StateReader;
 use mint::{Mint, RuntimeProvider, StorageProvider};
 use types::{
-    account::PublicKey,
+    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::mint::Error,
     CLTyped, CLValue, Key, URef,
@@ -15,7 +15,7 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_caller(&self) -> PublicKey {
+    fn get_caller(&self) -> AccountHash {
         self.get_caller()
     }
 

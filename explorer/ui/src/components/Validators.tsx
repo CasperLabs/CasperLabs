@@ -16,9 +16,6 @@ interface Props {
 
 @observer
 class Validators extends RefreshableComponent<Props, {}> {
-  constructor(props: Props) {
-    super(props);
-  }
 
   componentWillUnmount(): void {
     this.props.validatorsContainer.toggleableSubscriber.unsubscribeAndFree();

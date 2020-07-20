@@ -8,9 +8,7 @@ import base64
 import sys
 import os
 import functools
-import logging
 from pathlib import Path
-import datetime
 from casperlabs_client import (
     CasperLabsClient,
     DEFAULT_HOST,
@@ -83,59 +81,6 @@ def _set_session(args, file_name):
     """
     if not any((args.session, args.session_hash, args.session_name, args.session_uref)):
         args.session = bundled_contract(file_name)
-
-
-@guarded_command
-def bond_command(casperlabs_client, args):
-    logging.info(f"BOND {args}")
-    _set_session(args, "bonding.wasm")
-
-    if not args.session_args:
-        args.session_args = ABI.args_to_json(
-            ABI.args([ABI.long_value("amount", args.amount)])
-        )
-
-    return deploy_command(casperlabs_client, args)
-
-
-@guarded_command
-def unbond_command(casperlabs_client, args):
-    logging.info(f"UNBOND {args}")
-    _set_session(args, "unbonding.wasm")
-
-    if not args.session_args:
-        args.session_args = ABI.args_to_json(
-            ABI.args(
-                [ABI.optional_value("amount", ABI.long_value("amount", args.amount))]
-            )
-        )
-
-    return deploy_command(casperlabs_client, args)
-
-
-@guarded_command
-def transfer_command(casperlabs_client, args):
-    _set_session(args, "transfer_to_account_u512.wasm")
-
-    if not args.session_args:
-        target_account_bytes = base64.b64decode(args.target_account)
-        if len(target_account_bytes) != 32:
-            target_account_bytes = bytes.fromhex(args.target_account)
-            if len(target_account_bytes) != 32:
-                raise Exception(
-                    "--target_account must be 32 bytes base64 or base16 encoded"
-                )
-
-        args.session_args = ABI.args_to_json(
-            ABI.args(
-                [
-                    ABI.account("account", target_account_bytes),
-                    ABI.u512("amount", args.amount),
-                ]
-            )
-        )
-
-    return deploy_command(casperlabs_client, args)
 
 
 def _deploy_kwargs(args, private_key_accepted=True):
@@ -555,18 +500,6 @@ def cli(*arguments) -> int:
     parser.addCommand('send-deploy', send_deploy_command, "Deploy a smart contract source file to Casper on an existing running node. The deploy will be packaged and sent as a block to the network depending on the configuration of the Casper instance.",
                       [[('-i', '--deploy-path'), dict(required=False, default=None, help="Path to the file with signed deploy.")]])
 
-    parser.addCommand('bond', bond_command, 'Issues bonding request',
-                      [[('-a', '--amount'), dict(required=True, type=int, help='amount of motes to bond')]] + deploy_options())
-
-    parser.addCommand('unbond', unbond_command, 'Issues unbonding request',
-                      [[('-a', '--amount'),
-                       dict(required=False, default=None, type=int, help='Amount of motes to unbond. If not provided then a request to unbond with full staked amount is made.')]] + deploy_options())
-
-    parser.addCommand('transfer', transfer_command, 'Transfers funds between accounts',
-                      [[('-a', '--amount'), dict(required=True, default=None, type=int, help='Amount of motes to transfer. Note: a mote is the smallest, indivisible unit of a token.')],
-                       [('-t', '--target-account'), dict(required=True, type=str, help="base64 or base16 representation of target account's public key")],
-                       ] + deploy_options(private_key_accepted=True))
-
     parser.addCommand('propose', propose_command, '[DEPRECATED] Force a node to propose a block based on its accumulated deploys.', [])
 
     parser.addCommand('show-block', show_block_command, 'View properties of a block known by Casper on an existing running node. Output includes: parent hashes, storage contents of the tuplespace.',
@@ -631,7 +564,7 @@ def cli(*arguments) -> int:
         [('--deploy-orphaned',), dict(action='store_true', help='Deploy orphaned')],
         [('-k', '--account-public-key'), dict(action='append', help='Filter by (possibly multiple) account public key(s)')],
         [('-d', '--deploy-hash'), dict(action='append', help='Filter by (possibly multiple) deploy hash(es)')],
-        [('-f', '--format'), dict(required=False, default='text', choices=('json', 'binary', 'text') ,help='Choose output format. Defaults to text representation.')],
+        [('-f', '--format'), dict(required=False, default='text', choices=('json', 'binary', 'text'), help='Choose output format. Defaults to text representation.')],
         [('--min-event-id',), dict(required=False, default=0, type=int, help="Supports replaying events from a given ID. If the value is 0, it it will subscribe to future events; if it's non-zero, it will replay all past events from that ID, without subscribing to new. To catch up with events from the beginning, start from 1.")],
         [('--max-event-id',), dict(required=False, default=0, type=int, help="Supports replaying events to a given ID.")],
     ])

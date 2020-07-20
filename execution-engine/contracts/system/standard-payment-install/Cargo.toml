@@ -13,8 +13,9 @@ test = false
 
 [features]
 std = ["contract/std", "types/std"]
+no-unstable-features = ["contract/no-unstable-features", "types/no-unstable-features"]
 
 [dependencies]
 contract = { path = "../../../contract", package = "casperlabs-contract" }
 standard-payment = { version = "0.1.0", path = "../standard-payment" }
-types = { version = "0.5.1", path = "../../../types", package = "casperlabs-types" }
+types = { version = "0.6.0", path = "../../../types", package = "casperlabs-types" }

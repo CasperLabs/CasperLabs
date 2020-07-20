@@ -69,27 +69,35 @@ impl Buffer {
 
     /// Removes and returns items whose `description` field contains `description_fragment`.
     pub fn extract(&self, description_fragment: &str) -> Vec<LogLineItem> {
-        self.items
-            .lock()
-            .unwrap()
-            .drain_filter(|line| line.description.contains(description_fragment))
-            .collect()
+        let mut result = vec![];
+        let mut items = self.items.lock().unwrap();
+        let mut index = 0;
+        while index != items.len() {
+            if items[index].description.contains(description_fragment) {
+                result.push(items.remove(index));
+            } else {
+                index += 1
+            }
+        }
+        result
     }
 
     /// Removes and returns items whose `properties` have a matching `correlation_id`.
     pub fn extract_correlated(&self, target_correlation_id: CorrelationId) -> Vec<LogLineItem> {
         let target = target_correlation_id.to_string();
-        self.items
-            .lock()
-            .unwrap()
-            .drain_filter(|line| {
-                if let Some(correlation_id) = line.properties.get(CORRELATION_ID_KEY) {
-                    correlation_id == &target
-                } else {
-                    false
+        let mut result = vec![];
+        let mut items = self.items.lock().unwrap();
+        let mut index = 0;
+        while index != items.len() {
+            if let Some(correlation_id) = items[index].properties.get(CORRELATION_ID_KEY) {
+                if correlation_id == &target {
+                    result.push(items.remove(index));
+                    continue;
                 }
-            })
-            .collect()
+            }
+            index += 1;
+        }
+        result
     }
 }
 

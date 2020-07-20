@@ -2,18 +2,21 @@ import * as CL from "../../../../contract-as/assembly";
 import {Error, ErrorCode} from "../../../../contract-as/assembly/error";
 import {U512} from "../../../../contract-as/assembly/bignum";
 import {CLValue} from "../../../../contract-as/assembly/clvalue";
-import {Key} from "../../../../contract-as/assembly/key";
 import {getMainPurse} from "../../../../contract-as/assembly/account";
 import {createPurse, transferFromPurseToPurse} from "../../../../contract-as/assembly/purse";
+import {RuntimeArgs} from "../../../../contract-as/assembly/runtime_args";
+import {Pair} from "../../../../contract-as/assembly/pair";
 
 const POS_ACTION = "bond";
+const ARG_AMOUNT = "amount";
+const ARG_PURSE = "purse";
 
 export function call(): void {
     let proofOfStake = CL.getSystemContract(CL.SystemContract.ProofOfStake);
     let mainPurse = getMainPurse();
     let bondingPurse = createPurse();
 
-    let amountBytes = CL.getArg(0);
+    let amountBytes = CL.getNamedArg(ARG_AMOUNT);
     if (amountBytes === null) {
         Error.fromErrorCode(ErrorCode.MissingArgument).revert();
         return;
@@ -38,11 +41,9 @@ export function call(): void {
     }
 
     let bondingPurseValue = CLValue.fromURef(bondingPurse);
-    let key = Key.fromURef(proofOfStake);
-    let args: CLValue[] = [
-        CLValue.fromString(POS_ACTION),
-        CLValue.fromU512(amount),
-        bondingPurseValue
-    ];
-    CL.callContract(key, args);
+    let runtimeArgs = RuntimeArgs.fromArray([
+        new Pair(ARG_AMOUNT, CLValue.fromU512(amount)),
+        new Pair(ARG_PURSE, bondingPurseValue),
+    ]);
+    CL.callContract(proofOfStake, POS_ACTION, runtimeArgs);
 }

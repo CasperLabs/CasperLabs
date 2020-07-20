@@ -4,7 +4,7 @@ import cats._
 import cats.implicits._
 import cats.data.NonEmptyList
 import io.casperlabs.crypto.hash.Blake2b256
-import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyBS}
+import io.casperlabs.crypto.Keys.{PublicKey, PublicKeyHash, PublicKeyHashBS}
 import io.casperlabs.casper.consensus.{Bond, Era}
 import io.casperlabs.catscontrib.MonadThrowable
 import java.security.SecureRandom
@@ -60,13 +60,13 @@ object LeaderSequencer extends LeaderSequencer {
     * with a relative frequency based on their weight. */
   def leaderFunction(leaderSeed: Array[Byte], bonds: NonEmptyList[Bond]): LeaderFunction = {
     // Make a list of (validator, from, to) triplets.
-    type ValidatorRange = (PublicKeyBS, BigInt, BigInt)
+    type ValidatorRange = (PublicKeyHashBS, BigInt, BigInt)
 
     val (validators, total) = {
       val acc = bonds
         .foldLeft(List.empty[ValidatorRange] -> BigInt(0)) {
           case ((ranges, total), bond) =>
-            val key   = PublicKey(bond.validatorPublicKey)
+            val key   = PublicKeyHash(bond.validatorPublicKeyHash)
             val stake = BigInt(bond.getStake.value)
             // This should be trivial; the auction should not allow 0 bids,
             // but if it did, there would be no way to pick between them.
@@ -83,7 +83,7 @@ object LeaderSequencer extends LeaderSequencer {
     }
 
     // Given a target sum of bonds, find the validator with a total cumulative weight in that range.
-    def bisect(target: BigInt, i: Int = 0, j: Int = validators.size - 1): PublicKeyBS = {
+    def bisect(target: BigInt, i: Int = 0, j: Int = validators.size - 1): PublicKeyHashBS = {
       val k = (i + j) / 2
       val v = validators(k)
       // The first validator has the 0 inclusive, upper exclusive.
@@ -110,7 +110,7 @@ object LeaderSequencer extends LeaderSequencer {
 
   /** Make a function that assigns an order to all the validators within a round, deterministically. */
   def omegaFunction(leaderSeed: Array[Byte], bonds: NonEmptyList[Bond]): OmegaFunction = {
-    val validators = bonds.map(b => PublicKey(b.validatorPublicKey))
+    val validators = bonds.map(b => PublicKeyHash(b.validatorPublicKeyHash))
     (tick: Ticks) => {
       val random = getRandom(leaderSeed, tick)
       val varray = validators.toIterable.toArray

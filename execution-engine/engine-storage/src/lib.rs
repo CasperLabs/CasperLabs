@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 // modules
 pub mod error;
 pub mod global_state;

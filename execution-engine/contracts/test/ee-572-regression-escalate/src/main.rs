@@ -1,34 +1,17 @@
 #![no_std]
 #![no_main]
 
-use contract::{
-    contract_api::{runtime, storage},
-    unwrap_or_revert::UnwrapOrRevert,
-};
-use types::{AccessRights, ApiError, Key, URef};
-
-const CONTRACT_POINTER: u32 = 0;
-
-#[repr(u16)]
-enum Error {
-    GetArgument = 0,
-}
+use contract::contract_api::{runtime, storage};
+use types::{AccessRights, ContractHash, RuntimeArgs, URef};
 
 const REPLACEMENT_DATA: &str = "bawitdaba";
+const ARG_CONTRACT_HASH: &str = "contract_hash";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let arg: Key = runtime::get_arg(CONTRACT_POINTER)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
 
-    let contract_pointer = arg
-        .to_contract_ref()
-        .unwrap_or_revert_with(ApiError::User(Error::GetArgument as u16));
-
-    let reference: URef = runtime::call_contract(contract_pointer, ());
-
+    let reference: URef = runtime::call_contract(contract_hash, "create", RuntimeArgs::default());
     let forged_reference: URef = URef::new(reference.addr(), AccessRights::READ_ADD_WRITE);
-
     storage::write(forged_reference, REPLACEMENT_DATA)
 }

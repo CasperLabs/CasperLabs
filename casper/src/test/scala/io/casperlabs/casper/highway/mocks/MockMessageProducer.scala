@@ -8,7 +8,7 @@ import com.google.protobuf.ByteString
 import io.casperlabs.casper.consensus.{Block, BlockSummary}
 import io.casperlabs.casper.highway.{MessageProducer, Ticks}
 import io.casperlabs.casper.util.ProtoUtil
-import io.casperlabs.crypto.Keys.PublicKeyBS
+import io.casperlabs.crypto.Keys
 import io.casperlabs.storage.BlockHash
 import io.casperlabs.storage.BlockMsgWithTransform
 import io.casperlabs.storage.block.BlockStorageWriter
@@ -19,7 +19,7 @@ import io.casperlabs.shared.ByteStringPrettyPrinter._
 import io.casperlabs.shared.Log
 
 class MockMessageProducer[F[_]: Sync: BlockStorageWriter: DagStorage](
-    val validatorId: PublicKeyBS
+    val validatorId: Keys.PublicKeyHashBS
 ) extends MessageProducer[F] {
 
   override def hasPendingDeploys = false.pure[F]
@@ -67,7 +67,7 @@ class MockMessageProducer[F[_]: Sync: BlockStorageWriter: DagStorage](
       keyBlockHash: BlockHash,
       roundId: Ticks,
       target: Message.Block,
-      justifications: Map[PublicKeyBS, Set[Message]],
+      justifications: Map[Keys.PublicKeyHashBS, Set[Message]],
       messageRole: Block.MessageRole
   ): F[Message.Ballot] = withParent(target) { _ =>
     val unsigned = BlockSummary()
@@ -76,13 +76,13 @@ class MockMessageProducer[F[_]: Sync: BlockStorageWriter: DagStorage](
           .Header()
           .withMessageType(Block.MessageType.BALLOT)
           .withMessageRole(messageRole)
+          .withValidatorPublicKeyHash(validatorId)
           .withMainRank(target.mainRank + 1)
           .withJRank(
             (target.jRank +: justifications.values.flatten.map(_.jRank).toList)
               .map(_.asInstanceOf[Long])
               .max + 1
           )
-          .withValidatorPublicKey(validatorId)
           .withParentHashes(List(target.messageHash))
           .withJustifications(
             for {
@@ -108,7 +108,7 @@ class MockMessageProducer[F[_]: Sync: BlockStorageWriter: DagStorage](
       keyBlockHash: ByteString,
       roundId: Ticks,
       mainParent: Message.Block,
-      justifications: Map[PublicKeyBS, Set[Message]],
+      justifications: Map[Keys.PublicKeyHashBS, Set[Message]],
       isBookingBlock: Boolean,
       messageRole: Block.MessageRole
   ): F[Message.Block] =
@@ -118,13 +118,13 @@ class MockMessageProducer[F[_]: Sync: BlockStorageWriter: DagStorage](
           Block
             .Header()
             .withMessageRole(messageRole)
+            .withValidatorPublicKeyHash(validatorId)
             .withMainRank(mainParent.mainRank + 1)
             .withJRank(
               (mainParent.jRank +: justifications.values.flatten.map(_.jRank).toList)
                 .map(_.asInstanceOf[Long])
                 .max + 1
             )
-            .withValidatorPublicKey(validatorId)
             .withParentHashes(List(mainParent.messageHash))
             .withJustifications(
               for {

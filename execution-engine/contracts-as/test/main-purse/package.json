@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../target-as/main_purse.wasm  --validate --optimize --use abort=",
+    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../target-as/main_purse.wasm   --optimize --use abort=",
     "asbuild": "npm run asbuild:optimized"
   },
   "devDependencies": {

@@ -4,16 +4,19 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::ApiError;
+use types::{ApiError, RuntimeArgs};
 
 const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";
 
 #[ignore]
 #[test]
 fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
-    let exec_request =
-        ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, CONTRACT_EE_597_REGRESSION, ())
-            .build();
+    let exec_request = ExecuteRequestBuilder::standard(
+        DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_EE_597_REGRESSION,
+        RuntimeArgs::default(),
+    )
+    .build();
 
     let result = InMemoryWasmTestBuilder::default()
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
@@ -33,6 +36,9 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
         assert!(error_message.contains(&format!("{:?}", ApiError::Unhandled)));
     } else {
         // Error::BondTooSmall => 5,
-        assert!(error_message.contains(&format!("{:?}", ApiError::ProofOfStake(5))));
+        assert!(
+            error_message.contains(&format!("{:?}", ApiError::ProofOfStake(5))),
+            error_message
+        );
     }
 }

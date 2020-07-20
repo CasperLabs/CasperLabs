@@ -1,6 +1,6 @@
 [package]
 name = "casperlabs-types"
-version = "0.5.1" # when updating, also update 'html_root_url' in lib.rs
+version = "0.6.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Types used to allow creation of Wasm contracts and tests for use on the CasperLabs network."
@@ -14,6 +14,7 @@ license-file = "../../LICENSE"
 default = ["base16/alloc"]
 std = ["base16/std"]
 gens = ["std", "proptest/std"]
+no-unstable-features = []
 
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }
@@ -30,3 +31,6 @@ uint = { version = "0.8.2", default-features = false, features = [] }
 [dev-dependencies]
 proptest = "0.9.4"
 version-sync = "0.8"
+
+[package.metadata.docs.rs]
+features = ["no-unstable-features"]

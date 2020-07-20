@@ -1,13 +1,16 @@
 package io.casperlabs.smartcontracts
 
 import com.google.protobuf.ByteString
+import io.casperlabs.casper.consensus.state.SemVer
 import io.casperlabs.ipc.DeployPayload.Payload
 import io.casperlabs.ipc.{
   DeployCode,
   DeployItem,
   DeployPayload,
   StoredContractHash,
-  StoredContractName
+  StoredContractName,
+  StoredContractPackage,
+  StoredContractPackageHash
 }
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.{Arbitrary, Gen}
@@ -30,12 +33,22 @@ trait ArbitraryIpc {
                  .flatMap(genBytes(_))
       } yield Payload.DeployCode(DeployCode(code, args))
     }
+
+    // val arbSemVer = Arbitrary {
+    //   for {
+    //     major <- Gen.chooseNum(1, 10)
+    //     minor <- Gen.chooseNum(1, 10)
+    //     patch <- Gen.chooseNum(1, 10)
+    //   } yield SemVer(major, minor, patch)
+    // }
+
     val arbStoredContractHash = Arbitrary {
       for {
         hash <- genBytes(32)
         args <- Gen.chooseNum(100, 10000).flatMap(genBytes(_))
       } yield Payload.StoredContractHash(StoredContractHash(hash = hash, args = args))
     }
+
     val arbStoredContractName = Arbitrary {
       for {
         name <- Gen.alphaStr.map(_.take(20))

@@ -10,6 +10,8 @@ Instance = state.CLValueInstance
 Value = Instance.Value
 Type = state.CLType
 
+# TODO: This is in no way an ABI.  Need to rename.
+
 
 class ABI:
     """
@@ -29,7 +31,7 @@ class ABI:
                 ),
             )
         return Arg(
-            name=name,
+            name=ABI.string_value(name),
             value=Instance(
                 cl_type=Type(option_type=Type.Option(inner=a.value.cl_type)),
                 value=Value(option_value=Instance.Option(value=a.value.value)),
@@ -37,27 +39,35 @@ class ABI:
         )
 
     @staticmethod
-    def bytes_value(name, a: bytes):
-        n = len(a)
-        b = [Value(u8=byte) for byte in a]
+    def fixed_list(name: str, data: bytes):
+        data_len = len(data)
+        byte_values = [Value(u8=byte) for byte in data]
         return Arg(
             name=name,
             value=Instance(
                 cl_type=Type(
                     fixed_list_type=Type.FixedList(
-                        inner=Type(simple_type=Type.Simple.U8), len=n
+                        inner=Type(simple_type=Type.Simple.U8), len=data_len
                     )
                 ),
-                value=Value(fixed_list_value=Instance.FixedList(length=n, values=b)),
+                value=Value(
+                    fixed_list_value=Instance.FixedList(
+                        length=data_len, values=byte_values
+                    )
+                ),
             ),
         )
 
     @staticmethod
+    def bytes_value(name, a: bytes):
+        return ABI.fixed_list(name, a)
+
+    @staticmethod
     def account(name, a):
         if type(a) == bytes and len(a) == 32:
-            return ABI.bytes_value(name, a)
+            return ABI.fixed_list(name, a)
         if type(a) == str and len(a) == 64:
-            return ABI.bytes_value(name, bytes.fromhex(a))
+            return ABI.fixed_list(name, bytes.fromhex(a))
         raise Exception("account must be 32 bytes or 64 characters long string")
 
     @staticmethod
@@ -142,8 +152,8 @@ class ABI:
         )
 
     @staticmethod
-    def args(l: list):
-        c = consensus.Deploy.Code(args=l)
+    def args(args_list: list):
+        c = consensus.Deploy.Code(args=args_list)
         return c.args
 
     @staticmethod

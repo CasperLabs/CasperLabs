@@ -3,9 +3,11 @@ interface UserAccount {
   name: string;
   // Public key in PEM format.
   publicKeyBase64: string;
+  // Now we only support ed25519 in Clarity.
+  sigAlgorithm?: 'ed25519';
 }
 
-interface NamedHash{
+interface NamedHash {
   // Human readable name.
   name: string;
   // Hash of the vesting contract
@@ -17,8 +19,8 @@ interface UserMetadata {
   contracts?: Contracts;
 }
 
-interface Contracts{
-  vestingContracts?: NamedHash[]
+interface Contracts {
+  vestingContracts?: NamedHash[];
 }
 
 interface User {

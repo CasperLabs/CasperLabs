@@ -1,14 +1,17 @@
 import React from 'react';
 import { observer } from 'mobx-react';
 import { Form, SelectField, TextField } from './Forms';
-import AuthContainer from '../containers/AuthContainer';
+import AuthContainer, {
+  getPublicKeyHashBase16
+} from '../containers/AuthContainer';
 import { FaucetContainer, FaucetRequest } from '../containers/FaucetContainer';
 import {
   RefreshableComponent,
   Button,
   CommandLineHint,
   Icon,
-  Card, FailIcon
+  Card,
+  FailIcon
 } from './Utils';
 import DataTable from './DataTable';
 import { DeployInfo } from 'casperlabs-grpc/io/casperlabs/casper/consensus/info_pb';
@@ -70,11 +73,12 @@ const FaucetForm = observer(
             onChange={x => auth.selectAccountByName(x)}
           />
           <TextField
-            id="id-public-key-base16"
-            label="Public Key (Base16)"
+            id="id-public-key-hash-base16"
+            label="Public Key Hash (Base16)"
             fieldState={
               (auth.selectedAccount &&
-                base64to16(auth.selectedAccount.publicKeyBase64)) || ''
+                getPublicKeyHashBase16(auth.selectedAccount)) ||
+              ''
             }
             readonly={true}
           />

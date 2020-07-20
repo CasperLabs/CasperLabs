@@ -9,14 +9,23 @@ use proof_of_stake::{
     MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
 };
 use types::{
-    account::PublicKey, bytesrepr::ToBytes, system_contract_errors::pos::Error, ApiError,
+    account::AccountHash, bytesrepr::ToBytes, system_contract_errors::pos::Error, ApiError,
     BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512,
 };
 
 use crate::{execution, runtime::Runtime};
 
-const BONDING_KEY: u8 = 1;
-const UNBONDING_KEY: u8 = 2;
+const BONDING_KEY: [u8; 32] = {
+    let mut result = [0; 32];
+    result[31] = 1;
+    result
+};
+
+const UNBONDING_KEY: [u8; 32] = {
+    let mut result = [0; 32];
+    result[31] = 2;
+    result
+};
 
 // TODO: Update MintProvider to better handle errors
 impl<'a, R> MintProvider for Runtime<'a, R>
@@ -27,7 +36,7 @@ where
     fn transfer_purse_to_account(
         &mut self,
         source: URef,
-        target: PublicKey,
+        target: AccountHash,
         amount: U512,
     ) -> Result<TransferredTo, ApiError> {
         self.transfer_from_purse_to_account(source, target, amount)
@@ -40,7 +49,7 @@ where
         target: URef,
         amount: U512,
     ) -> Result<(), ()> {
-        let mint_contract_key = self.get_mint_contract_uref().into();
+        let mint_contract_key = self.get_mint_contract();
         if self
             .mint_transfer(mint_contract_key, source, target, amount)
             .is_ok()
@@ -123,7 +132,7 @@ where
         self.context.get_blocktime()
     }
 
-    fn get_caller(&self) -> PublicKey {
+    fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
     }
 }
@@ -150,7 +159,7 @@ where
             let _bytes_written = base16::decode_slice(hex_key, &mut key_bytes)
                 .map_err(|_| Error::StakesKeyDeserializationFailed)?;
             debug_assert!(_bytes_written == key_bytes.len());
-            let pub_key = PublicKey::ed25519_from(key_bytes);
+            let pub_key = AccountHash::new(key_bytes);
             let balance = split_name
                 .next()
                 .and_then(|b| U512::from_dec_str(b).ok())

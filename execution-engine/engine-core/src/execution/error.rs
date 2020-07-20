@@ -4,7 +4,8 @@ use parity_wasm::elements;
 use engine_shared::TypeMismatch;
 use types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system_contract_errors, AccessRights, ApiError, CLValueError, Key, URef,
+    bytesrepr, system_contract_errors, AccessRights, ApiError, CLType, CLValueError,
+    ContractPackageHash, ContractVersionKey, Key, URef,
 };
 
 use crate::resolvers::error::ResolverError;
@@ -17,6 +18,8 @@ pub enum Error {
     Storage(engine_storage::error::Error),
     #[fail(display = "Serialization error: {}", _0)]
     BytesRepr(bytesrepr::Error),
+    #[fail(display = "Named key {} not found", _0)]
+    NamedKeyNotFound(String),
     #[fail(display = "Key {} not found", _0)]
     KeyNotFound(Key),
     #[fail(display = "Account {:?} not found", _0)]
@@ -73,15 +76,37 @@ pub enum Error {
     HostBufferEmpty,
     #[fail(display = "Unsupported WASM start")]
     UnsupportedWasmStart,
+    #[fail(display = "No active contract versions for contract package")]
+    NoActiveContractVersions(ContractPackageHash),
+    #[fail(display = "Invalid contract version: {}", _0)]
+    InvalidContractVersion(ContractVersionKey),
+    #[fail(display = "No such method: {}", _0)]
+    NoSuchMethod(String),
+    #[fail(display = "Wasm preprocessing error: {}", _0)]
+    WasmPreprocessing(engine_wasm_prep::PreprocessingError),
+    #[fail(
+        display = "Unexpected Key length. Expected length {} but actual length is {}",
+        expected, actual
+    )]
+    InvalidKeyLength { expected: usize, actual: usize },
+}
+
+impl From<engine_wasm_prep::PreprocessingError> for Error {
+    fn from(error: engine_wasm_prep::PreprocessingError) -> Self {
+        Error::WasmPreprocessing(error)
+    }
+}
+
+impl Error {
+    pub fn type_mismatch(expected: CLType, found: CLType) -> Error {
+        Error::TypeMismatch(TypeMismatch {
+            expected: format!("{:?}", expected),
+            found: format!("{:?}", found),
+        })
+    }
 }
 
 impl wasmi::HostError for Error {}
-
-impl From<!> for Error {
-    fn from(error: !) -> Self {
-        match error {}
-    }
-}
 
 impl From<wasmi::Error> for Error {
     fn from(error: wasmi::Error) -> Self {

@@ -6,7 +6,7 @@ import cats.implicits._
 import com.google.protobuf.ByteString
 import io.casperlabs.casper.consensus.info.DeployInfo
 import io.casperlabs.casper.consensus.{Block, Deploy, DeploySummary}
-import io.casperlabs.crypto.Keys.PublicKeyBS
+import io.casperlabs.crypto.Keys.PublicKeyHashBS
 import io.casperlabs.crypto.codec.Base16
 import io.casperlabs.models.DeployImplicits.DeployOps
 import io.casperlabs.shared.Log
@@ -190,8 +190,8 @@ class MockDeployStorage[F[_]: Sync: Log](
 
     override def readProcessed: F[List[Deploy]] = readByStatus(ProcessedStatusCode)
 
-    override def readProcessedByAccount(account: ByteString): F[List[Deploy]] =
-      readProcessed.map(_.filter(_.getHeader.accountPublicKey == account))
+    override def readProcessedByAccount(account: PublicKeyHashBS): F[List[Deploy]] =
+      readProcessed.map(_.filter(_.getHeader.accountPublicKeyHash == account))
 
     override def readProcessedHashes: F[List[ByteString]] = readProcessed.map(_.map(_.deployHash))
 
@@ -270,7 +270,7 @@ class MockDeployStorage[F[_]: Sync: Log](
       List.empty[DeployInfo].pure[F]
 
     override def getDeploysByAccount(
-        account: PublicKeyBS,
+        account: PublicKeyHashBS,
         limit: Int,
         lastTimeStamp: Long,
         lastDeployHash: DeployHash,

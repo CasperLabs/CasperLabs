@@ -1,10 +1,10 @@
-use types::{account::PublicKey, TransferResult, URef, U512};
+use types::{account::AccountHash, TransferResult, URef, U512};
 
 pub trait MintProvider {
     fn transfer_purse_to_account(
         &mut self,
         source: URef,
-        target: PublicKey,
+        target: AccountHash,
         amount: U512,
     ) -> TransferResult;
 

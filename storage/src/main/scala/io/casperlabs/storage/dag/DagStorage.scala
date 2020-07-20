@@ -13,6 +13,7 @@ import io.casperlabs.storage.BlockHash
 import io.casperlabs.storage.dag.DagRepresentation.Validator
 import io.casperlabs.catscontrib.MonadThrowable
 import io.casperlabs.crypto.codec.Base16
+import io.casperlabs.crypto.Keys.PublicKeyHashBS
 import simulacrum.typeclass
 
 import scala.util.Try
@@ -248,7 +249,7 @@ trait DagRepresentation[F[_]] extends DagLookup[F] {
 }
 
 object DagRepresentation {
-  type Validator = ByteString
+  type Validator = PublicKeyHashBS
 
   implicit class DagRepresentationRich[F[_]: Monad](
       dagRepresentation: DagRepresentation[F]

@@ -15,19 +15,23 @@ use proof_of_stake::{
     MintProvider, ProofOfStake, Queue, QueueProvider, RuntimeProvider, Stakes, StakesProvider,
 };
 use types::{
-    account::PublicKey, system_contract_errors::pos::Error, ApiError, BlockTime, CLValue, Key,
+    account::AccountHash, system_contract_errors::pos::Error, ApiError, BlockTime, CLValue, Key,
     Phase, TransferResult, URef, U512,
 };
 
-const METHOD_BOND: &str = "bond";
-const METHOD_UNBOND: &str = "unbond";
-const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
-const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
-const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
-const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
+pub const METHOD_BOND: &str = "bond";
+pub const METHOD_UNBOND: &str = "unbond";
+pub const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
+pub const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
+pub const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
+pub const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
 
 const BONDING_KEY: u8 = 1;
 const UNBONDING_KEY: u8 = 2;
+
+pub const ARG_AMOUNT: &str = "amount";
+pub const ARG_PURSE: &str = "purse";
+pub const ARG_ACCOUNT_KEY: &str = "account";
 
 pub struct ProofOfStakeContract;
 
@@ -35,7 +39,7 @@ impl MintProvider for ProofOfStakeContract {
     fn transfer_purse_to_account(
         &mut self,
         source: URef,
-        target: PublicKey,
+        target: AccountHash,
         amount: U512,
     ) -> TransferResult {
         system::transfer_from_purse_to_account(source, target, amount)
@@ -102,7 +106,7 @@ impl RuntimeProvider for ProofOfStakeContract {
         runtime::get_blocktime()
     }
 
-    fn get_caller(&self) -> PublicKey {
+    fn get_caller(&self) -> AccountHash {
         runtime::get_caller()
     }
 }
@@ -126,7 +130,7 @@ impl StakesProvider for ProofOfStakeContract {
             let _bytes_written = base16::decode_slice(hex_key, &mut key_bytes)
                 .map_err(|_| Error::StakesKeyDeserializationFailed)?;
             debug_assert!(_bytes_written == key_bytes.len());
-            let pub_key = PublicKey::ed25519_from(key_bytes);
+            let pub_key = AccountHash::new(key_bytes);
             let balance = split_name
                 .next()
                 .and_then(|b| U512::from_dec_str(b).ok())
@@ -157,81 +161,68 @@ impl StakesProvider for ProofOfStakeContract {
 
 impl ProofOfStake for ProofOfStakeContract {}
 
-pub fn delegate() {
+pub fn bond() {
+    if !cfg!(feature = "enable-bonding") {
+        runtime::revert(ApiError::Unhandled)
+    }
+
+    let validator = runtime::get_caller();
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    // source purse
+    let source: URef = runtime::get_named_arg(ARG_PURSE);
+
+    let mut pos_contract = ProofOfStakeContract;
+    pos_contract
+        .bond(validator, amount, source)
+        .unwrap_or_revert();
+}
+
+pub fn unbond() {
+    if !cfg!(feature = "enable-bonding") {
+        runtime::revert(ApiError::Unhandled)
+    }
+
+    let validator = runtime::get_caller();
+    let maybe_amount = runtime::get_named_arg(ARG_AMOUNT);
+
+    let mut pos_contract = ProofOfStakeContract;
+    pos_contract
+        .unbond(validator, maybe_amount)
+        .unwrap_or_revert();
+}
+
+pub fn get_payment_purse() {
+    let pos_contract = ProofOfStakeContract;
+    let rights_controlled_purse = pos_contract.get_payment_purse().unwrap_or_revert();
+    let return_value = CLValue::from_t(rights_controlled_purse).unwrap_or_revert();
+    runtime::ret(return_value);
+}
+
+pub fn set_refund_purse() {
     let mut pos_contract = ProofOfStakeContract;
 
-    let method_name: String = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let refund_purse: URef = runtime::get_named_arg(ARG_PURSE);
+    pos_contract
+        .set_refund_purse(refund_purse)
+        .unwrap_or_revert();
+}
 
-    match method_name.as_str() {
-        // Type of this method: `fn bond(amount: U512, purse: URef)`
-        METHOD_BOND => {
-            if !cfg!(feature = "enable-bonding") {
-                runtime::revert(ApiError::Unhandled)
-            }
+pub fn get_refund_purse() {
+    let pos_contract = ProofOfStakeContract;
+    // We purposely choose to remove the access rights so that we do not
+    // accidentally give rights for a purse to some contract that is not
+    // supposed to have it.
+    let maybe_refund_purse = pos_contract.get_refund_purse().unwrap_or_revert();
+    let return_value = CLValue::from_t(maybe_refund_purse).unwrap_or_revert();
+    runtime::ret(return_value);
+}
 
-            let validator = runtime::get_caller();
-            let amount: U512 = runtime::get_arg(1)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            let source_purse: URef = runtime::get_arg(2)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            pos_contract
-                .bond(validator, amount, source_purse)
-                .unwrap_or_revert();
-        }
-        // Type of this method: `fn unbond(amount: Option<U512>)`
-        METHOD_UNBOND => {
-            if !cfg!(feature = "enable-bonding") {
-                runtime::revert(ApiError::Unhandled)
-            }
+pub fn finalize_payment() {
+    let mut pos_contract = ProofOfStakeContract;
 
-            let validator = runtime::get_caller();
-            let maybe_amount = runtime::get_arg(1)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            pos_contract
-                .unbond(validator, maybe_amount)
-                .unwrap_or_revert();
-        }
-        // Type of this method: `fn get_payment_purse() -> URef`
-        METHOD_GET_PAYMENT_PURSE => {
-            let rights_controlled_purse = pos_contract.get_payment_purse().unwrap_or_revert();
-            let return_value = CLValue::from_t(rights_controlled_purse).unwrap_or_revert();
-            runtime::ret(return_value);
-        }
-        // Type of this method: `fn set_refund_purse(purse: URef)`
-        METHOD_SET_REFUND_PURSE => {
-            let refund_purse: URef = runtime::get_arg(1)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            pos_contract
-                .set_refund_purse(refund_purse)
-                .unwrap_or_revert();
-        }
-        // Type of this method: `fn get_refund_purse() -> URef`
-        METHOD_GET_REFUND_PURSE => {
-            // We purposely choose to remove the access rights so that we do not
-            // accidentally give rights for a purse to some contract that is not
-            // supposed to have it.
-            let maybe_refund_purse = pos_contract.get_refund_purse().unwrap_or_revert();
-            let return_value = CLValue::from_t(maybe_refund_purse).unwrap_or_revert();
-            runtime::ret(return_value);
-        }
-        // Type of this method: `fn finalize_payment()`
-        METHOD_FINALIZE_PAYMENT => {
-            let amount_spent: U512 = runtime::get_arg(1)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            let account: PublicKey = runtime::get_arg(2)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            pos_contract
-                .finalize_payment(amount_spent, account)
-                .unwrap_or_revert();
-        }
-        _ => {}
-    }
+    let amount_spent: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let account: AccountHash = runtime::get_named_arg(ARG_ACCOUNT_KEY);
+    pos_contract
+        .finalize_payment(amount_spent, account)
+        .unwrap_or_revert();
 }

@@ -10,21 +10,15 @@ use contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, U512};
+use types::U512;
 
-enum Arg {
-    TotalPurses = 0,
-    SeedAmount,
-}
+const ARG_TOTAL_PURSES: &str = "total_purses";
+const ARG_SEED_AMOUNT: &str = "seed_amount";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let total_purses: u64 = runtime::get_arg(Arg::TotalPurses as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let seed_amount: U512 = runtime::get_arg(Arg::SeedAmount as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let total_purses: u64 = runtime::get_named_arg(ARG_TOTAL_PURSES);
+    let seed_amount: U512 = runtime::get_named_arg(ARG_SEED_AMOUNT);
 
     for i in 0..total_purses {
         let new_purse = system::create_purse();

@@ -13,14 +13,14 @@ import io.casperlabs.casper.MultiParentCasperRef
 import io.casperlabs.catscontrib.{Fs2Compiler, MonadThrowable}
 import io.casperlabs.comm.ServiceError.{FailedPrecondition, InvalidArgument, Unavailable}
 import io.casperlabs.comm.gossiping.relaying.DeployRelaying
-import io.casperlabs.crypto.Keys.PublicKey
+import io.casperlabs.crypto.Keys.PublicKeyHash
 import io.casperlabs.crypto.codec.Base16
 import io.casperlabs.mempool.DeployBuffer
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.models.BlockImplicits._
 import io.casperlabs.models.SmartContractEngineError
 import io.casperlabs.node.api.Utils.{
-  validateAccountPublicKey,
+  validateAccountPublicKeyHash,
   validateBlockHashPrefix,
   validateDeployHash
 }
@@ -165,11 +165,11 @@ object GrpcCasperService {
         ): Task[ListDeployInfosResponse] =
           TaskLike[F].apply {
             for {
-              accountPublicKeyBase16 <- validateAccountPublicKey[F](
-                                         request.accountPublicKeyBase16,
-                                         request.accountPublicKey,
-                                         adaptToInvalidArgument
-                                       )
+              accountPublicKeyHashBase16 <- validateAccountPublicKeyHash[F](
+                                             request.accountPublicKeyHashBase16,
+                                             request.accountPublicKeyHash,
+                                             adaptToInvalidArgument
+                                           )
               (pageSize, pageTokenParams) <- MonadThrowable[F].fromTry(
                                               DeployInfoPagination
                                                 .parsePageToken(
@@ -177,15 +177,15 @@ object GrpcCasperService {
                                                   request.pageToken
                                                 )
                                             )
-              accountPublicKeyBs = PublicKey(
+              accountPublicKeyHash = PublicKeyHash(
                 ByteString.copyFrom(
-                  Base16.decode(accountPublicKeyBase16)
+                  Base16.decode(accountPublicKeyHashBase16)
                 )
               )
               deploys <- DeployStorage[F]
                           .reader(request.view)
                           .getDeploysByAccount(
-                            accountPublicKeyBs,
+                            accountPublicKeyHash,
                             pageSize,
                             pageTokenParams.lastTimeStamp,
                             pageTokenParams.lastDeployHash,

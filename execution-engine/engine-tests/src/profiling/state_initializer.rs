@@ -11,19 +11,23 @@ use engine_core::engine_state::{
 };
 use engine_test_support::{
     internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_WASM_COSTS,
-        MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_CONTRACT,
+        utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
+        DEFAULT_ACCOUNTS, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
         STANDARD_PAYMENT_INSTALL_CONTRACT,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
 
 use casperlabs_engine_tests::profiling;
+use types::{runtime_args, RuntimeArgs};
 
 const ABOUT: &str = "Initializes global state in preparation for profiling runs. Outputs the root \
                      hash from the commit response.";
 const STATE_INITIALIZER_CONTRACT: &str = "state_initializer.wasm";
+const ARG_ACCOUNT1_HASH: &str = "account_1_hash";
+const ARG_ACCOUNT1_AMOUNT: &str = "account_1_amount";
+const ARG_ACCOUNT2_HASH: &str = "account_2_hash";
 
 fn data_dir() -> PathBuf {
     let exe_name = profiling::exe_name();
@@ -39,10 +43,10 @@ fn data_dir() -> PathBuf {
 fn main() {
     let data_dir = data_dir();
 
-    let genesis_public_key = DEFAULT_ACCOUNT_ADDR;
-    let account_1_public_key = profiling::account_1_public_key();
+    let genesis_account_hash = DEFAULT_ACCOUNT_ADDR;
+    let account_1_account_hash = profiling::account_1_account_hash();
     let account_1_initial_amount = profiling::account_1_initial_amount();
-    let account_2_public_key = profiling::account_2_public_key();
+    let account_2_account_hash = profiling::account_2_account_hash();
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
@@ -50,14 +54,14 @@ fn main() {
             .with_deploy_hash([1; 32])
             .with_session_code(
                 STATE_INITIALIZER_CONTRACT,
-                (
-                    account_1_public_key,
-                    account_1_initial_amount,
-                    account_2_public_key,
-                ),
+                runtime_args! {
+                    ARG_ACCOUNT1_HASH => account_1_account_hash,
+                    ARG_ACCOUNT1_AMOUNT => account_1_initial_amount,
+                    ARG_ACCOUNT2_HASH => account_2_account_hash,
+                },
             )
-            .with_payment_code(STANDARD_PAYMENT_CONTRACT, (*DEFAULT_PAYMENT,))
-            .with_authorization_keys(&[genesis_public_key])
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_authorization_keys(&[genesis_account_hash])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()

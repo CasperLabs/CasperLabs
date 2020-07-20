@@ -231,7 +231,7 @@ object ExecutionEngineService {
     def apply(ipcCommitResult: io.casperlabs.ipc.CommitResult): CommitResult = {
       // XXX: EE returns bonds as BigInt but we treat it as Long.
       val validators = ipcCommitResult.bondedValidators.map(
-        b => Bond(b.validatorPublicKey, b.stake)
+        b => Bond(b.validatorAccountHash, b.stake)
       )
       new CommitResult(ipcCommitResult.poststateHash, validators)
     }

@@ -293,7 +293,7 @@ class DagOperationsTest
        */
 
       for {
-        genesis      <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis      <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         a            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1)
         b            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v2)
         c            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v3)
@@ -507,7 +507,7 @@ class DagOperationsTest
   val v3Bond     = Bond(v2, 3)
   val bondsThree = List(v1Bond, v2Bond, v3Bond)
 
-  val genesisValidator = ByteString.EMPTY
+  val genesisValidator = EmptyValidator
   val genesisEra       = ByteString.EMPTY
 
   "panoramaOfBlockByValidators" should "return latest message per validator within single era" in withCombinedStorage() {
@@ -525,7 +525,7 @@ class DagOperationsTest
       // Expected result: Map(A -> a1, B -> b2, C -> c1)
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bondsThree)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bondsThree)
         a1 <- createAndStoreBlockFull[Task](
                v1,
                Seq(genesis),
@@ -600,7 +600,7 @@ class DagOperationsTest
       // Expected result: Map(A -> a2, B -> S_b, C -> c2)
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bondsThree)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bondsThree)
         a1 <- createAndStoreBlockFull[Task](
                v1,
                Seq(genesis),
@@ -714,7 +714,7 @@ class DagOperationsTest
     //
     // Note there's no message for C validator
     for {
-      genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bondsThree)
+      genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bondsThree)
       a1 <- createAndStoreBlockFull[Task](
              v1,
              Seq(genesis),
@@ -788,7 +788,7 @@ class DagOperationsTest
       //
       // Note there's no message for C validator and A equivocated before stop block.
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bondsThree)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bondsThree)
         a1 <- createAndStoreBlockFull[Task](
                v1,
                Seq(genesis),
@@ -895,7 +895,7 @@ class DagOperationsTest
       val bonds  = v4Bond +: bondsThree
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         a1 <- createAndStoreBlockFull[Task](
                v1,
                Seq(genesis),
@@ -1033,7 +1033,7 @@ class DagOperationsTest
       val bonds  = v4Bond +: bondsThree
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         a1 <- createAndStoreBlockFull[Task](
                v1,
                Seq(genesis),
@@ -1142,7 +1142,7 @@ class DagOperationsTest
     b.update(
         _.header := b.getHeader
           .withParentHashes(Seq.empty)
-          .withValidatorPublicKey(ByteString.EMPTY)
+          .withValidatorPublicKeyHash(EmptyValidator)
           .withMainRank(0)
       )
       .withSignature(Signature())

@@ -1,20 +1,20 @@
 use engine_wasm_prep::wasm_costs::{WasmCosts, WASM_COSTS_SERIALIZED_LENGTH};
+use std::collections::BTreeMap;
 use types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    AccessRights, URef, UREF_SERIALIZED_LENGTH,
+    ContractHash, HashAddr, KEY_HASH_LENGTH,
 };
 
-const PROTOCOL_DATA_SERIALIZED_LENGTH: usize =
-    WASM_COSTS_SERIALIZED_LENGTH + 3 * UREF_SERIALIZED_LENGTH;
-const DEFAULT_UREF_ADDRESS: [u8; 32] = [0; 32];
+const PROTOCOL_DATA_SERIALIZED_LENGTH: usize = WASM_COSTS_SERIALIZED_LENGTH + 3 * KEY_HASH_LENGTH;
+const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ProtocolData {
     wasm_costs: WasmCosts,
-    mint: URef,
-    proof_of_stake: URef,
-    standard_payment: URef,
+    mint: ContractHash,
+    proof_of_stake: ContractHash,
+    standard_payment: ContractHash,
 }
 
 /// Provides a default instance with non existing urefs and empty costs table.
@@ -25,9 +25,9 @@ impl Default for ProtocolData {
     fn default() -> ProtocolData {
         ProtocolData {
             wasm_costs: WasmCosts::default(),
-            mint: URef::new(DEFAULT_UREF_ADDRESS, AccessRights::READ),
-            proof_of_stake: URef::new(DEFAULT_UREF_ADDRESS, AccessRights::READ),
-            standard_payment: URef::new(DEFAULT_UREF_ADDRESS, AccessRights::READ),
+            mint: DEFAULT_ADDRESS,
+            proof_of_stake: DEFAULT_ADDRESS,
+            standard_payment: DEFAULT_ADDRESS,
         }
     }
 }
@@ -36,9 +36,9 @@ impl ProtocolData {
     /// Creates a new [`ProtocolData`] value from a given [`WasmCosts`] value.
     pub fn new(
         wasm_costs: WasmCosts,
-        mint: URef,
-        proof_of_stake: URef,
-        standard_payment: URef,
+        mint: ContractHash,
+        proof_of_stake: ContractHash,
+        standard_payment: ContractHash,
     ) -> Self {
         ProtocolData {
             wasm_costs,
@@ -51,7 +51,7 @@ impl ProtocolData {
     /// Creates a new, partially-valid [`ProtocolData`] value where only the mint URef is known.
     ///
     /// Used during `commit_genesis` before all system contracts' URefs are known.
-    pub fn partial_with_mint(mint: URef) -> Self {
+    pub fn partial_with_mint(mint: ContractHash) -> Self {
         ProtocolData {
             mint,
             ..Default::default()
@@ -64,8 +64,8 @@ impl ProtocolData {
     /// Used during `commit_genesis` before all system contracts' URefs are known.
     pub fn partial_without_standard_payment(
         wasm_costs: WasmCosts,
-        mint: URef,
-        proof_of_stake: URef,
+        mint: ContractHash,
+        proof_of_stake: ContractHash,
     ) -> Self {
         ProtocolData {
             wasm_costs,
@@ -80,31 +80,46 @@ impl ProtocolData {
         &self.wasm_costs
     }
 
-    pub fn mint(&self) -> URef {
+    pub fn mint(&self) -> ContractHash {
         self.mint
     }
 
-    pub fn proof_of_stake(&self) -> URef {
+    pub fn proof_of_stake(&self) -> ContractHash {
         self.proof_of_stake
     }
 
-    pub fn standard_payment(&self) -> URef {
+    pub fn standard_payment(&self) -> ContractHash {
         self.standard_payment
     }
 
     /// Retrieves all valid system contracts stored in protocol version
-    pub fn system_contracts(&self) -> Vec<URef> {
+    pub fn system_contracts(&self) -> Vec<ContractHash> {
         let mut vec = Vec::with_capacity(3);
-        if self.mint.addr() != DEFAULT_UREF_ADDRESS {
+        if self.mint != DEFAULT_ADDRESS {
             vec.push(self.mint)
         }
-        if self.proof_of_stake.addr() != DEFAULT_UREF_ADDRESS {
+        if self.proof_of_stake != DEFAULT_ADDRESS {
             vec.push(self.proof_of_stake)
         }
-        if self.standard_payment.addr() != DEFAULT_UREF_ADDRESS {
+        if self.standard_payment != DEFAULT_ADDRESS {
             vec.push(self.standard_payment)
         }
         vec
+    }
+
+    pub fn update_from(&mut self, updates: BTreeMap<ContractHash, ContractHash>) -> bool {
+        for (old_hash, new_hash) in updates {
+            if old_hash == self.mint {
+                self.mint = new_hash;
+            } else if old_hash == self.proof_of_stake {
+                self.proof_of_stake = new_hash;
+            } else if old_hash == self.standard_payment {
+                self.standard_payment = new_hash;
+            } else {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -126,9 +141,10 @@ impl ToBytes for ProtocolData {
 impl FromBytes for ProtocolData {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (wasm_costs, rem) = WasmCosts::from_bytes(bytes)?;
-        let (mint, rem) = URef::from_bytes(rem)?;
-        let (proof_of_stake, rem) = URef::from_bytes(rem)?;
-        let (standard_payment, rem) = URef::from_bytes(rem)?;
+        let (mint, rem) = HashAddr::from_bytes(rem)?;
+        let (proof_of_stake, rem) = HashAddr::from_bytes(rem)?;
+        let (standard_payment, rem) = HashAddr::from_bytes(rem)?;
+
         Ok((
             ProtocolData {
                 wasm_costs,
@@ -153,9 +169,9 @@ pub(crate) mod gens {
     prop_compose! {
         pub fn protocol_data_arb()(
             wasm_costs in wasm_costs_gens::wasm_costs_arb(),
-            mint in gens::uref_arb(),
-            proof_of_stake in gens::uref_arb(),
-            standard_payment in gens::uref_arb(),
+            mint in gens::u8_slice_32(),
+            proof_of_stake in gens::u8_slice_32(),
+            standard_payment in gens::u8_slice_32(),
         ) -> ProtocolData {
             ProtocolData {
                 wasm_costs,
@@ -172,7 +188,7 @@ mod tests {
     use proptest::proptest;
 
     use engine_wasm_prep::wasm_costs::WasmCosts;
-    use types::{bytesrepr, AccessRights, URef};
+    use types::{bytesrepr, ContractHash};
 
     use super::{gens, ProtocolData};
 
@@ -210,9 +226,9 @@ mod tests {
     fn should_serialize_and_deserialize() {
         let mock = {
             let costs = wasm_costs_mock();
-            let mint_reference = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
-            let proof_of_stake_reference = URef::new([1u8; 32], AccessRights::READ_ADD_WRITE);
-            let standard_payment_reference = URef::new([2u8; 32], AccessRights::READ_ADD_WRITE);
+            let mint_reference = [1u8; 32];
+            let proof_of_stake_reference = [2u8; 32];
+            let standard_payment_reference = [3u8; 32];
             ProtocolData::new(
                 costs,
                 mint_reference,
@@ -222,9 +238,9 @@ mod tests {
         };
         let free = {
             let costs = wasm_costs_free();
-            let mint_reference = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
-            let proof_of_stake_reference = URef::new([1u8; 32], AccessRights::READ_ADD_WRITE);
-            let standard_payment_reference = URef::new([2u8; 32], AccessRights::READ_ADD_WRITE);
+            let mint_reference = [0u8; 32];
+            let proof_of_stake_reference = [1u8; 32];
+            let standard_payment_reference = [2u8; 32];
             ProtocolData::new(
                 costs,
                 mint_reference,
@@ -238,9 +254,9 @@ mod tests {
 
     #[test]
     fn should_return_all_system_contracts() {
-        let mint_reference = URef::new([197u8; 32], AccessRights::READ_ADD_WRITE);
-        let proof_of_stake_reference = URef::new([198u8; 32], AccessRights::READ_ADD_WRITE);
-        let standard_payment_reference = URef::new([199u8; 32], AccessRights::READ_ADD_WRITE);
+        let mint_reference = [1u8; 32];
+        let proof_of_stake_reference = [2u8; 32];
+        let standard_payment_reference = [3u8; 32];
         let protocol_data = {
             let costs = wasm_costs_mock();
             ProtocolData::new(
@@ -265,11 +281,12 @@ mod tests {
 
     #[test]
     fn should_return_only_valid_system_contracts() {
-        assert_eq!(ProtocolData::default().system_contracts(), &[]);
+        let expected: Vec<ContractHash> = vec![];
+        assert_eq!(ProtocolData::default().system_contracts(), expected);
 
-        let mint_reference = URef::new([197u8; 32], AccessRights::READ_ADD_WRITE);
-        let proof_of_stake_reference = URef::new([0u8; 32], AccessRights::READ);
-        let standard_payment_reference = URef::new([199u8; 32], AccessRights::READ_ADD_WRITE);
+        let mint_reference = [0u8; 32]; // <-- invalid addr
+        let proof_of_stake_reference = [2u8; 32];
+        let standard_payment_reference = [3u8; 32];
         let protocol_data = {
             let costs = wasm_costs_mock();
             ProtocolData::new(
@@ -287,7 +304,7 @@ mod tests {
         };
 
         assert_eq!(actual.len(), 2);
-        assert_eq!(actual[0], mint_reference);
+        assert_eq!(actual[0], proof_of_stake_reference);
         assert_eq!(actual[1], standard_payment_reference);
     }
 

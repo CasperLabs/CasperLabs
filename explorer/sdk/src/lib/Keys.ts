@@ -2,9 +2,38 @@ import * as fs from 'fs';
 import * as nacl from 'tweetnacl-ts';
 import { decodeBase64 } from 'tweetnacl-util';
 import { ByteArray } from '../index';
+import { byteHash } from './Contracts';
+
+// Based on Keys.scala
+const publicKeyHashUtil = (signatureAlgorithm: string) => {
+  const separator = Buffer.from([0]);
+  const prefix = Buffer.concat([
+    Buffer.from(signatureAlgorithm.toUpperCase()),
+    separator
+  ]);
+
+  return (publicKey: ByteArray) => {
+    if (publicKey.length === 0) {
+      return Buffer.from([]);
+    } else {
+      return byteHash(Buffer.concat([prefix, Buffer.from(publicKey)]));
+    }
+  };
+};
 
 // Based on SignatureAlgorithm.scala
 export class Ed25519 {
+  name: string = 'ed25519';
+
+  public static newKeyPair() {
+    return nacl.sign_keyPair();
+  }
+
+  /** Compute a unique hash from the algorithm name and a public key, used for accounts. */
+  public static publicKeyHash: (
+    publicKey: ByteArray
+  ) => ByteArray = publicKeyHashUtil(Ed25519.name);
+
   public static parseKeyFiles(
     publicKeyPath: string,
     privateKeyPath: string

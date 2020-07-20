@@ -3,25 +3,21 @@ import * as CL from "../../../../contract-as/assembly";
 import {Error, ErrorCode} from "../../../../contract-as/assembly/error";
 import {fromBytesString} from "../../../../contract-as/assembly/bytesrepr";
 import {Key} from "../../../../contract-as/assembly/key";
-import {putKey, removeKey, ret, upgradeContractAtURef} from "../../../../contract-as/assembly";
-import {CLValue} from "../../../../contract-as/assembly/clvalue";
+import {CLValue, CLType, CLTypeTag} from "../../../../contract-as/assembly/clvalue";
 import {URef} from "../../../../contract-as/assembly/uref";
 import {createPurse} from "../../../../contract-as/assembly/purse";
+import { checkItemsEqual } from "../../../../contract-as/assembly/utils";
+import {Pair} from "../../../../contract-as/assembly/pair";
 
-const ENTRY_FUNCTION_NAME = "delegate";
 const METHOD_ADD = "add";
 const METHOD_REMOVE = "remove";
 const METHOD_VERSION = "version";
-const VERSION = "1.0.1";
-
-enum ApplyArgs {
-  MethodName = 0,
-  PurseName = 1,
-}
-
-enum CallArgs {
-  PurseHolderURef = 0,
-}
+const ARG_PURSE_NAME = "purse_name";
+const NEW_VERSION = "1.0.1";
+const VERSION = "version";
+const ACCESS_KEY_NAME = "purse_holder_access";
+const PURSE_HOLDER_STORED_CONTRACT_NAME = "purse_holder_stored";
+const ARG_CONTRACT_PACKAGE = "contract_package";
 
 enum CustomError {
   MissingPurseHolderURefArg = 0,
@@ -35,90 +31,84 @@ enum CustomError {
   NamedPurseNotCreated = 8
 }
 
-export function delegate(): void {
-  // methodName
-  const methodNameArg = CL.getArg(ApplyArgs.MethodName);
-  if (methodNameArg === null) {
-    Error.fromUserError(<u16>CustomError.MissingMethodNameArg).revert();
-    return;
-  }
-  const methodNameResult = fromBytesString(methodNameArg);
-  if (methodNameResult === null){
-    Error.fromUserError(<u16>CustomError.InvalidMethodNameArg).revert();
-    return;
-  }
-  let methodName = methodNameResult.value;
-  if (methodName == METHOD_ADD){
-    // purseName
-    const purseNameArg = CL.getArg(ApplyArgs.PurseName);
-    if (purseNameArg === null){
-      Error.fromUserError(<u16>CustomError.MissingPurseNameArg).revert();
-      return;
-    }
-    const purseNameResult = fromBytesString(purseNameArg);
-    if (purseNameResult === null){
-      Error.fromUserError(<u16>CustomError.InvalidPurseNameArg).revert();
-      return;
-    }
-    let purseName = purseNameResult.value;
 
-    let purse = createPurse();
-    if (purse === null) {
-      Error.fromUserError(<u16>CustomError.NamedPurseNotCreated).revert();
-      return;
-    }
-    const uref = <URef>purse;
-    const key = Key.fromURef(uref);
-    putKey(purseName, <Key>key);
-    return;
-  }
-  if (methodName == METHOD_REMOVE){
-    // purseName
-    const purseNameArg = CL.getArg(ApplyArgs.PurseName);
-    if (purseNameArg === null){
-      Error.fromUserError(<u16>CustomError.MissingPurseNameArg).revert();
-      return;
-    }
-    const purseNameResult = fromBytesString(purseNameArg);
-    if (purseNameResult === null){
-      Error.fromUserError(<u16>CustomError.InvalidPurseNameArg).revert();
-      return;
-    }
-    let purseName = purseNameResult.value;
-    removeKey(purseName);
-    return;
-  }
-  if (methodName == METHOD_ADD){
-    ret(CLValue.fromString(VERSION));
-    return;
-  }
-  Error.fromUserError(<u16>CustomError.UnknownMethodName).revert();
+function getPurseName(): String {
+  let purseNameBytes = CL.getNamedArg(ARG_PURSE_NAME);
+  return fromBytesString(purseNameBytes).unwrap();
+}
+
+export function add(): void {
+  let purseName = getPurseName();
+  let purse = createPurse();
+  CL.putKey(purseName, Key.fromURef(purse));
+}
+
+export function remove(): void {
+  let purseName = getPurseName();
+  CL.removeKey(purseName);
+}
+
+export function version(): void {
+  CL.ret(CLValue.fromString(VERSION));
+}
+
+export function delegate(): void {
 }
 
 export function call(): void {
-  let urefBytes = CL.getArg(CallArgs.PurseHolderURef);
-  if (urefBytes === null) {
-    Error.fromUserError(<u16>CustomError.MissingPurseHolderURefArg).revert();
-    return;
-  }
-  let urefResult = URef.fromBytes(urefBytes);
-  if (urefResult.hasError()) {
-    Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
-    return;
-  }
-  let uref = urefResult.value;
-  if (uref.isValid() == false){
-    Error.fromUserError(<u16>CustomError.InvalidPurseHolderURefArg).revert();
+  let contractPackageHash = CL.getNamedArg(ARG_CONTRACT_PACKAGE);
+  let accessKey = CL.getKey(ACCESS_KEY_NAME);
+  if (accessKey === null) {
+    Error.fromErrorCode(ErrorCode.GetKey).revert();
     return;
   }
 
-  upgradeContractAtURef(ENTRY_FUNCTION_NAME, <URef>uref);
+  let entryPoints = new CL.EntryPoints();
 
-  const maybeVersionKey = Key.create(CLValue.fromString(VERSION));
-  if (maybeVersionKey === null) {
-    Error.fromUserError(<u16>CustomError.UnableToStoreVersion).revert();
+  let addArgs = new Array<Pair<String, CLType>>();
+  addArgs.push(new Pair(ARG_PURSE_NAME, new CLType(CLTypeTag.String)));
+
+  let add = new CL.EntryPoint(
+        METHOD_ADD,
+        addArgs,
+        new CLType(CLTypeTag.Unit),
+        new CL.PublicAccess(),
+        CL.EntryPointType.Contract,
+    );
+  entryPoints.addEntryPoint(add);
+
+  let version = new CL.EntryPoint(
+      METHOD_VERSION,
+      new Array<Pair<String, CLType>>(),
+      new CLType(CLTypeTag.String),
+      new CL.PublicAccess(),
+      CL.EntryPointType.Contract,
+  );
+  entryPoints.addEntryPoint(version);
+
+  let removeArgs = new Array<Pair<String, CLType>>();
+  removeArgs.push(new Pair(ARG_PURSE_NAME, new CLType(CLTypeTag.String)));
+
+  let remove = new CL.EntryPoint(
+    METHOD_REMOVE,
+    removeArgs,
+    new CLType(CLTypeTag.Unit),
+    new CL.PublicAccess(),
+    CL.EntryPointType.Contract,
+  );
+  entryPoints.addEntryPoint(remove);
+
+  let newResult = CL.addContractVersion(
+    contractPackageHash,
+    entryPoints,
+    new Array<Pair<String, Key>>(),
+  );
+  CL.putKey(PURSE_HOLDER_STORED_CONTRACT_NAME, Key.fromHash(newResult.contractHash));
+
+  let newVersionKey = Key.create(CLValue.fromString(NEW_VERSION));
+  if (newVersionKey === null) {
+    Error.fromErrorCode(ErrorCode.Formatting).revert();
     return;
   }
-  const versionKey = <Key>maybeVersionKey;
-  putKey(METHOD_VERSION, <Key>versionKey);
+  CL.putKey(VERSION, newVersionKey);
 }

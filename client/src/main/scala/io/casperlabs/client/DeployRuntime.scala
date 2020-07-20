@@ -111,10 +111,6 @@ object DeployRuntime {
       )
     )
 
-  // This is true for any array but I didn't want to go as far as writing type classes.
-  private def serializeArray(ba: Array[Byte]): Array[Byte] =
-    ba
-
   def unbond[F[_]: Sync: DeployService](
       maybeAmount: Option[Long],
       deployConfig: DeployConfig,
@@ -177,15 +173,8 @@ object DeployRuntime {
       json: Boolean
   ): F[Unit] =
     gracefulExit({
-      val key = if (keyVariant == "local") {
-        val parts          = keyValue.split(":")
-        val seed           = parts(0)
-        val rest           = parts(1)
-        val abiEncodedRest = Base16.encode(serializeArray(Base16.decode(rest)))
-        s"$seed:$abiEncodedRest"
-      } else keyValue
       DeployService[F]
-        .queryState(blockHash, keyVariant, key, path)
+        .queryState(blockHash, keyVariant, keyValue, path)
         .map(_.map(Printer.print(_, bytesStandard, json)))
     })
 
@@ -197,27 +186,16 @@ object DeployRuntime {
               .raiseError(new IllegalStateException(s"Expected Account type value under $address."))
               .whenA(!value.value.isAccount)
         account = value.getAccount
-        mintPublic <- Sync[F].fromOption(
-                       account.namedKeys.find(_.name == "mint").flatMap(_.key),
-                       new IllegalStateException(
-                         "Account's known_urefs map did not contain Mint contract address."
-                       )
-                     )
         localKeyValue = {
-          val mintPublicHex = Base16.encode(mintPublic.getUref.uref.toByteArray) // Assuming that `mintPublic` is of `URef` type.
-          val purseAddrHex = {
-            val purseAddr    = account.getMainPurse.uref.toByteArray
-            val purseAddrSer = serializeArray(purseAddr)
-            Base16.encode(purseAddrSer)
-          }
-          s"$mintPublicHex:$purseAddrHex"
+          val purseAddrHex = Base16.encode(account.getMainPurse.uref.toByteArray)
+          s"$purseAddrHex"
         }
-        localQuery  <- DeployService[F].queryState(blockHash, "local", localKeyValue, "").rethrow
+        localQuery  <- DeployService[F].queryState(blockHash, "hash", localKeyValue, "").rethrow
         balanceURef = localQuery.getClValue.getValue.getKey.getUref
         urefQuery <- DeployService[F]
                       .queryState(
                         blockHash,
-                        "uref",
+                        "hash",
                         Base16.encode(balanceURef.uref.toByteArray),
                         ""
                       )
@@ -387,7 +365,7 @@ object DeployRuntime {
       publicKey    <- readKey[F, PublicKey](publicKeyFile, "public", Ed25519.tryParsePublicKey _)
       privateKey   <- readKey[F, PrivateKey](privateKeyFile, "private", Ed25519.tryParsePrivateKey _)
       deploy       <- Sync[F].fromTry(Try(Deploy.parseFrom(deployBA)))
-      signedDeploy = deploy.sign(privateKey, publicKey)
+      signedDeploy = deploy.approve(Ed25519, privateKey, publicKey)
       _            <- writeDeploy(signedDeploy, output)
     } yield ()
 
@@ -408,13 +386,15 @@ object DeployRuntime {
         deployConfig.paymentAmount.map(bigIntArg("amount", _)).toList
       )
 
+    val accountPublicKeyHash = Ed25519.publicKeyHash(from)
+
     consensus
       .Deploy()
       .withHeader(
         consensus.Deploy
           .Header()
           .withTimestamp(System.currentTimeMillis)
-          .withAccountPublicKey(ByteString.copyFrom(from))
+          .withAccountPublicKeyHash(ByteString.copyFrom(accountPublicKeyHash))
           .withGasPrice(deployConfig.gasPrice)
           .withTtlMillis(deployConfig.timeToLive.getOrElse(0))
           .withDependencies(deployConfig.dependencies)
@@ -525,7 +505,7 @@ object DeployRuntime {
     } yield {
       val deploy =
         makeDeploy(accountPublicKey, deployConfig, sessionArgs)
-      (maybePrivateKey, maybePublicKey).mapN(deploy.sign) getOrElse deploy
+      (maybePrivateKey, maybePublicKey).mapN(deploy.approve(Ed25519, _, _)) getOrElse deploy
     }
 
     gracefulExit(

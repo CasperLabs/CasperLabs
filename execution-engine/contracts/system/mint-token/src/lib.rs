@@ -1,8 +1,9 @@
 #![no_std]
 
+#[macro_use]
 extern crate alloc;
 
-use alloc::string::String;
+use alloc::boxed::Box;
 
 use contract::{
     contract_api::{runtime, storage},
@@ -10,21 +11,28 @@ use contract::{
 };
 use mint::{Mint, RuntimeProvider, StorageProvider};
 use types::{
-    account::PublicKey,
+    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    contracts::Parameters,
     system_contract_errors::mint::Error,
-    ApiError, CLTyped, CLValue, Key, URef, U512,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    Parameter, URef, U512,
 };
 
-const METHOD_MINT: &str = "mint";
-const METHOD_CREATE: &str = "create";
-const METHOD_BALANCE: &str = "balance";
-const METHOD_TRANSFER: &str = "transfer";
+pub const METHOD_MINT: &str = "mint";
+pub const METHOD_CREATE: &str = "create";
+pub const METHOD_BALANCE: &str = "balance";
+pub const METHOD_TRANSFER: &str = "transfer";
+
+pub const ARG_AMOUNT: &str = "amount";
+pub const ARG_PURSE: &str = "purse";
+pub const ARG_SOURCE: &str = "source";
+pub const ARG_TARGET: &str = "target";
 
 pub struct MintContract;
 
 impl RuntimeProvider for MintContract {
-    fn get_caller(&self) -> PublicKey {
+    fn get_caller(&self) -> AccountHash {
         runtime::get_caller()
     }
 
@@ -66,54 +74,87 @@ impl StorageProvider for MintContract {
 
 impl Mint for MintContract {}
 
-pub fn delegate() {
+pub fn mint() {
     let mut mint_contract = MintContract;
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let result: Result<URef, Error> = mint_contract.mint(amount);
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret)
+}
 
-    let method_name: String = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+pub fn create() {
+    let mut mint_contract = MintContract;
+    let uref = mint_contract.mint(U512::zero()).unwrap_or_revert();
+    let ret = CLValue::from_t(uref).unwrap_or_revert();
+    runtime::ret(ret)
+}
 
-    match method_name.as_str() {
-        // Type: `fn mint(amount: U512) -> Result<URef, Error>`
-        METHOD_MINT => {
-            let amount: U512 = runtime::get_arg(1)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            let result: Result<URef, Error> = mint_contract.mint(amount);
-            let ret = CLValue::from_t(result).unwrap_or_revert();
-            runtime::ret(ret)
-        }
-        // Type: `fn create() -> URef`
-        METHOD_CREATE => {
-            let uref = mint_contract.mint(U512::zero()).unwrap_or_revert();
-            let ret = CLValue::from_t(uref).unwrap_or_revert();
-            runtime::ret(ret)
-        }
-        // Type: `fn balance(purse: URef) -> Option<U512>`
-        METHOD_BALANCE => {
-            let uref: URef = runtime::get_arg(1)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            let balance: Option<U512> = mint_contract.balance(uref).unwrap_or_revert();
-            let ret = CLValue::from_t(balance).unwrap_or_revert();
-            runtime::ret(ret)
-        }
-        // Type: `fn transfer(source: URef, target: URef, amount: U512) -> Result<(), Error>`
-        METHOD_TRANSFER => {
-            let source: URef = runtime::get_arg(1)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            let target: URef = runtime::get_arg(2)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            let amount: U512 = runtime::get_arg(3)
-                .unwrap_or_revert_with(ApiError::MissingArgument)
-                .unwrap_or_revert_with(ApiError::InvalidArgument);
-            let result: Result<(), Error> = mint_contract.transfer(source, target, amount);
-            let ret = CLValue::from_t(result).unwrap_or_revert();
-            runtime::ret(ret);
-        }
+pub fn balance() {
+    let mut mint_contract = MintContract;
+    let uref: URef = runtime::get_named_arg(ARG_PURSE);
+    let balance: Option<U512> = mint_contract.balance(uref).unwrap_or_revert();
+    let ret = CLValue::from_t(balance).unwrap_or_revert();
+    runtime::ret(ret)
+}
 
-        _ => panic!("Unknown method name!"),
-    }
+pub fn transfer() {
+    let mut mint_contract = MintContract;
+    let source: URef = runtime::get_named_arg(ARG_SOURCE);
+    let target: URef = runtime::get_named_arg(ARG_TARGET);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let result: Result<(), Error> = mint_contract.transfer(source, target, amount);
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret);
+}
+
+pub fn get_entry_points() -> EntryPoints {
+    let mut entry_points = EntryPoints::new();
+
+    let entry_point = EntryPoint::new(
+        METHOD_MINT,
+        vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
+        CLType::Result {
+            ok: Box::new(CLType::URef),
+            err: Box::new(CLType::U8),
+        },
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_CREATE,
+        Parameters::new(),
+        CLType::URef,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_BALANCE,
+        vec![Parameter::new(ARG_PURSE, CLType::URef)],
+        CLType::Option(Box::new(CLType::U512)),
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_TRANSFER,
+        vec![
+            Parameter::new(ARG_SOURCE, CLType::URef),
+            Parameter::new(ARG_TARGET, CLType::URef),
+            Parameter::new(ARG_AMOUNT, CLType::U512),
+        ],
+        CLType::Result {
+            ok: Box::new(CLType::Unit),
+            err: Box::new(CLType::U8),
+        },
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    entry_points
 }

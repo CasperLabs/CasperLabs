@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../target-as/endless_loop.wasm  --validate --optimize --use abort=",
+    "asbuild:optimized": "asc --lib ../../.. assembly/index.ts -b ../../../target-as/endless_loop.wasm   --optimize --use abort=",
     "asbuild": "npm run asbuild:optimized"
   },
   "devDependencies": {

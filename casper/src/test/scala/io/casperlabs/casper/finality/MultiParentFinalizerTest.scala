@@ -8,6 +8,7 @@ import cats.effect.Concurrent
 import cats.effect.concurrent.Ref
 import io.casperlabs.catscontrib.{Fs2Compiler, MonadThrowable}
 import com.google.protobuf.ByteString
+import io.casperlabs.crypto.Keys
 import io.casperlabs.casper.Estimator.BlockHash
 import io.casperlabs.casper.PrettyPrinter
 import io.casperlabs.casper.consensus.Block
@@ -45,7 +46,7 @@ class MultiParentFinalizerTest
   it should "cache block finalization so it doesn't revisit already finalized blocks." in withCombinedStorage() {
     implicit storage =>
       for {
-        genesis                                  <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis                                  <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         implicit0(fs: MockFinalityStorage[Task]) <- MockFinalityStorage[Task](genesis.blockHash)
         dag                                      <- storage.getRepresentation
         implicit0(multiParentFinalizer: MultiParentFinalizer[Task]) <- MultiParentFinalizer
@@ -104,7 +105,7 @@ class MultiParentFinalizerTest
         *      \\= C
         */
       for {
-        genesis                                  <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis                                  <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         implicit0(fs: MockFinalityStorage[Task]) <- MockFinalityStorage[Task](genesis.blockHash)
         dag                                      <- storage.getRepresentation
         fft                                      = 0.1
@@ -162,7 +163,7 @@ object MultiParentFinalizerTest extends BlockGenerator {
               blockInfo.getSummary.getHeader.parentHashes.headOption.getOrElse(ByteString.EMPTY)
             )} <- ${PrettyPrinter
               .buildString(blockInfo.getSummary.blockHash)} : ${PrettyPrinter
-              .buildString(blockInfo.getSummary.getHeader.validatorPublicKey)}"
+              .buildString(blockInfo.getSummary.getHeader.validatorPublicKeyHash)}"
         ).mkString("\n")
       )
 
@@ -175,10 +176,14 @@ object MultiParentFinalizerTest extends BlockGenerator {
       start: BlockHash,
       bonds: NonEmptyList[Bond]
   ): F[List[BlockHash]] =
-    bonds.map(_.validatorPublicKey).toList.foldLeftM(start :: Nil) {
+    bonds.map(_.validatorPublicKeyHash).toList.foldLeftM(start :: Nil) {
       case (chain, validatorId) =>
         for {
-          block <- createAndStoreMessage[F](Seq(chain.head), validatorId, bonds.toList)
+          block <- createAndStoreMessage[F](
+                    Seq(chain.head),
+                    Keys.PublicKeyHash(validatorId),
+                    bonds.toList
+                  )
         } yield block.blockHash :: chain
     }
 
@@ -209,7 +214,10 @@ object MultiParentFinalizerTest extends BlockGenerator {
                 res   <- onNewMessageAdded[F](msg)
               } yield res
           )
-      b <- createAndStoreMessage[F](Seq(chain.head), bonds.head.validatorPublicKey) // Create level-1 summit
+      b <- createAndStoreMessage[F](
+            Seq(chain.head),
+            Keys.PublicKeyHash(bonds.head.validatorPublicKeyHash)
+          ) // Create level-1 summit
     } yield b.blockHash
 
   // Finalizes block it receives as argument.

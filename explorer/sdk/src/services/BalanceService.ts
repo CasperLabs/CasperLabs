@@ -13,16 +13,16 @@ export default class BalanceService {
 
   async getAccountBalance(
     blockHash: BlockHash,
-    accountPublicKey: ByteArray
+    accountPublicKeyHash: ByteArray
   ): Promise<number | undefined> {
-    const hash = encodeBase16(accountPublicKey);
+    const hash = encodeBase16(accountPublicKeyHash);
     let balanceUref = this.balanceUrefs.get(hash);
 
     // Find the balance Uref and cache it if we don't have it.
     if (!balanceUref) {
       balanceUref = await this.casperService.getAccountBalanceUref(
         blockHash,
-        accountPublicKey
+        accountPublicKeyHash
       );
       if (balanceUref) {
         this.balanceUrefs.set(hash, balanceUref);

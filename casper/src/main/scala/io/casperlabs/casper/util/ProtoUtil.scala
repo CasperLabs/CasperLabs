@@ -8,13 +8,14 @@ import cats.implicits._
 import com.google.protobuf.ByteString
 import io.casperlabs.casper.Estimator.{BlockHash, Validator}
 import io.casperlabs.casper.consensus.Block.{GlobalState, Justification, MessageType}
+import io.casperlabs.casper.consensus.Deploy.Code.{StoredContract, StoredVersionedContract}
 import io.casperlabs.casper.consensus.state.ProtocolVersion
 import io.casperlabs.casper.consensus.{BlockSummary, _}
 import io.casperlabs.casper.{PrettyPrinter, ValidatorIdentity}
 import io.casperlabs.catscontrib.MonadThrowable
 import io.casperlabs.models.DeployImplicits._
 import io.casperlabs.crypto.Keys
-import io.casperlabs.crypto.Keys.PrivateKey
+import io.casperlabs.crypto.Keys.{PrivateKey, PublicKey}
 import io.casperlabs.crypto.codec.Base16
 import io.casperlabs.crypto.hash.Blake2b256
 import io.casperlabs.crypto.signatures.SignatureAlgorithm
@@ -28,10 +29,11 @@ import io.casperlabs.models.bytesrepr._
 import io.casperlabs.storage.block.BlockStorage
 import io.casperlabs.storage.dag.DagRepresentation
 import io.casperlabs.models.Message.{asJRank, asMainRank, JRank, MainRank}
+
 import scala.collection.immutable
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.duration._
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 import io.casperlabs.storage.dag.DagLookup
 import io.casperlabs.shared.Sorting._
 import io.casperlabs.shared.ByteStringPrettyPrinter._
@@ -154,10 +156,7 @@ object ProtoUtil {
     }
 
   def creatorJustification(header: Block.Header): Set[Justification] =
-    header.justifications.collect {
-      case j @ Justification(validator: Validator, _) if validator == header.validatorPublicKey =>
-        j
-    }.toSet
+    header.justifications.filter(_.validatorPublicKeyHash == header.validatorPublicKeyHash).toSet
 
   def weightMap(block: Block): Map[ByteString, Weight] =
     weightMap(block.getHeader)
@@ -211,20 +210,20 @@ object ProtoUtil {
 
   def weightFromValidator[F[_]: Monad: BlockStorage](
       b: Block,
-      validator: ByteString
+      validator: Validator
   ): F[Weight] =
     weightFromValidator[F](b.getHeader, validator)
 
   def weightFromSender[F[_]: Monad: BlockStorage](b: Block): F[Weight] =
-    weightFromValidator[F](b, b.getHeader.validatorPublicKey)
+    weightFromValidator[F](b, Keys.PublicKeyHash(b.getHeader.validatorPublicKeyHash))
 
   def weightFromSender[F[_]: Monad: BlockStorage](header: Block.Header): F[Weight] =
-    weightFromValidator[F](header, header.validatorPublicKey)
+    weightFromValidator[F](header, Keys.PublicKeyHash(header.validatorPublicKeyHash))
 
   def mainParentWeightMap[F[_]: MonadThrowable](
       dag: DagRepresentation[F],
       candidateBlockHash: BlockHash
-  ): F[Map[BlockHash, Weight]] =
+  ): F[Map[Validator, Weight]] =
     dag.lookup(candidateBlockHash).flatMap { messageOpt =>
       val message = messageOpt.get
       if (message.isGenesisLike) {
@@ -235,14 +234,14 @@ object ProtoUtil {
         dag.lookup(message.parentBlock).flatMap {
           case Some(b: Message.Block) => b.weightMap.pure[F]
           case Some(b: Message.Ballot) =>
-            MonadThrowable[F].raiseError[Map[ByteString, Weight]](
+            MonadThrowable[F].raiseError[Map[Validator, Weight]](
               new IllegalArgumentException(
                 s"A ballot ${PrettyPrinter.buildString(b.messageHash)} was a parent block for ${PrettyPrinter
                   .buildString(message.messageHash)}"
               )
             )
           case None =>
-            MonadThrowable[F].raiseError[Map[ByteString, Weight]](
+            MonadThrowable[F].raiseError[Map[Validator, Weight]](
               new IllegalArgumentException(
                 s"Missing dependency ${PrettyPrinter.buildString(message.parentBlock)}"
               )
@@ -317,14 +316,16 @@ object ProtoUtil {
     latestMessages.map { messageSummary =>
       Block
         .Justification()
-        .withValidatorPublicKey(messageSummary.validatorId)
+        .withValidatorPublicKeyHash(messageSummary.validatorId)
         .withLatestBlockHash(messageSummary.messageHash)
     }
 
   def getJustificationMsgHashes(
       justifications: Seq[Justification]
   ): immutable.Map[Validator, Set[BlockHash]] =
-    justifications.groupBy(_.validatorPublicKey).mapValues(_.map(_.latestBlockHash).toSet)
+    justifications
+      .groupBy(j => Keys.PublicKeyHash(j.validatorPublicKeyHash))
+      .mapValues(_.map(_.latestBlockHash).toSet)
 
   def getJustificationMsgs[F[_]: MonadThrowable](
       dag: DagRepresentation[F],
@@ -334,7 +335,7 @@ object ProtoUtil {
       case (acc, Justification(validator, hash)) =>
         dag.lookup(hash).flatMap {
           case Some(meta) =>
-            acc.combine(Map(validator -> Set(meta))).pure[F]
+            acc.combine(Map(Keys.PublicKeyHash(validator) -> Set(meta))).pure[F]
 
           case None =>
             MonadThrowable[F].raiseError(
@@ -388,9 +389,7 @@ object ProtoUtil {
       now: Long,
       jRank: JRank,
       mainRank: MainRank,
-      publicKey: Keys.PublicKey,
-      privateKey: Keys.PrivateKey,
-      sigAlgorithm: SignatureAlgorithm,
+      validator: ValidatorIdentity,
       keyBlockHash: ByteString,
       roundId: Long,
       magicBit: Boolean,
@@ -413,7 +412,7 @@ object ProtoUtil {
       protocolVersion = protocolVersion,
       timestamp = now,
       chainName = chainName,
-      creator = publicKey,
+      creator = validator,
       validatorSeqNum = validatorSeqNum,
       validatorPrevBlockHash = validatorPrevBlockHash,
       keyBlockHash = keyBlockHash,
@@ -425,8 +424,8 @@ object ProtoUtil {
 
     signBlock(
       unsigned,
-      privateKey,
-      sigAlgorithm
+      validator.privateKey,
+      validator.signatureAlgorithm
     )
   }
 
@@ -443,9 +442,7 @@ object ProtoUtil {
       now: Long,
       jRank: JRank,
       mainRank: MainRank,
-      publicKey: Keys.PublicKey,
-      privateKey: Keys.PrivateKey,
-      sigAlgorithm: SignatureAlgorithm,
+      validator: ValidatorIdentity,
       keyBlockHash: ByteString,
       roundId: Long,
       messageRole: Block.MessageRole = Block.MessageRole.UNDEFINED
@@ -468,7 +465,7 @@ object ProtoUtil {
       protocolVersion = protocolVersion,
       timestamp = now,
       chainName = chainName,
-      creator = publicKey,
+      creator = validator,
       validatorSeqNum = validatorSeqNum,
       validatorPrevBlockHash = validatorPrevBlockHash,
       keyBlockHash = keyBlockHash,
@@ -479,14 +476,14 @@ object ProtoUtil {
 
     signBlock(
       unsigned,
-      privateKey,
-      sigAlgorithm
+      validator.privateKey,
+      validator.signatureAlgorithm
     )
   }
 
   def blockHeader(
       body: Block.Body,
-      creator: Keys.PublicKey,
+      creator: ValidatorIdentity,
       parentHashes: Seq[ByteString],
       justifications: Seq[Justification],
       state: Block.GlobalState,
@@ -512,7 +509,8 @@ object ProtoUtil {
       .withState(state)
       .withJRank(jRank)
       .withMainRank(mainRank)
-      .withValidatorPublicKey(ByteString.copyFrom(creator))
+      .withValidatorPublicKey(ByteString.copyFrom(creator.publicKey))
+      .withValidatorPublicKeyHash(ByteString.copyFrom(creator.publicKeyHash))
       .withValidatorBlockSeqNum(validatorSeqNum)
       .withValidatorPrevBlockHash(validatorPrevBlockHash)
       .withProtocolVersion(protocolVersion)
@@ -570,16 +568,17 @@ object ProtoUtil {
   def deploy(
       timestamp: Long,
       sessionCode: ByteString = ByteString.EMPTY,
-      ttl: FiniteDuration = 1.minute
+      ttl: FiniteDuration = 1.minute,
+      signatureAlgorithm: SignatureAlgorithm = Ed25519
   ): Deploy = {
-    val (sk, pk) = Ed25519.newKeyPair
+    val (sk, pk) = signatureAlgorithm.newKeyPair
     val b = Deploy
       .Body()
-      .withSession(Deploy.Code().withWasm(sessionCode))
-      .withPayment(Deploy.Code().withWasm(sessionCode))
+      .withSession(Deploy.Code().withWasmContract(Deploy.Code.WasmContract(sessionCode)))
+      .withPayment(Deploy.Code().withWasmContract(Deploy.Code.WasmContract(sessionCode)))
     val h = Deploy
       .Header()
-      .withAccountPublicKey(ByteString.copyFrom(pk))
+      .withAccountPublicKeyHash(ByteString.copyFrom(signatureAlgorithm.publicKeyHash(pk)))
       .withTimestamp(timestamp)
       .withBodyHash(protoHash(b))
       .withTtlMillis(ttl.toMillis.toInt)
@@ -587,7 +586,7 @@ object ProtoUtil {
       .withHeader(h)
       .withBody(b)
       .withHashes
-      .sign(sk, pk)
+      .approve(signatureAlgorithm, sk, pk)
 
   }
 
@@ -613,13 +612,26 @@ object ProtoUtil {
     for {
       session <- toPayload(d.getBody.session)
       payment <- toPayload(d.getBody.payment)
+      keyHashes <- d.approvals.toList.map { approval =>
+                    approval.getSignature.sigAlgorithm match {
+                      case SignatureAlgorithm(alg) =>
+                        val key  = PublicKey(approval.approverPublicKey.toByteArray)
+                        val hash = alg.publicKeyHash(key)
+                        Success(ByteString.copyFrom(hash))
+
+                      case unknown =>
+                        Failure(
+                          new IllegalArgumentException(s"Unknown signature algorithm: $unknown")
+                        )
+                    }
+                  }.sequence
     } yield {
       ipc.DeployItem(
-        address = d.getHeader.accountPublicKey,
+        address = d.getHeader.accountPublicKeyHash,
         session = session,
         payment = payment,
         gasPrice = GAS_PRICE,
-        authorizationKeys = d.approvals.map(_.approverPublicKey),
+        authorizationKeys = keyHashes,
         deployHash = d.deployHash
       )
     }
@@ -632,25 +644,96 @@ object ProtoUtil {
       case Right(args) =>
         Try(
           ByteString.copyFrom(
-            ToBytes[Seq[cltype.CLValue]].toBytes(args)
+            ToBytes[Map[String, cltype.CLValue]].toBytes(args.toMap)
           )
         )
     }
 
-    argsF.map { args =>
+    argsF.flatMap { args =>
       val payload = code.contract match {
-        case Deploy.Code.Contract.Wasm(wasm) =>
-          ipc.DeployPayload.Payload.DeployCode(ipc.DeployCode(wasm, args))
-        case Deploy.Code.Contract.Hash(hash) =>
-          ipc.DeployPayload.Payload.StoredContractHash(ipc.StoredContractHash(hash, args))
-        case Deploy.Code.Contract.Name(name) =>
-          ipc.DeployPayload.Payload.StoredContractName(ipc.StoredContractName(name, args))
-        case Deploy.Code.Contract.Uref(uref) =>
-          ipc.DeployPayload.Payload.StoredContractUref(ipc.StoredContractURef(uref, args))
+        case Deploy.Code.Contract.WasmContract(contract) =>
+          Success(ipc.DeployPayload.Payload.DeployCode(ipc.DeployCode(contract.wasm, args)))
+
+        case Deploy.Code.Contract.StoredContract(contract) =>
+          if (contract.address.isName) {
+            Success(
+              ipc.DeployPayload.Payload.StoredContractName(
+                io.casperlabs.ipc
+                  .StoredContractName(
+                    contract.getName,
+                    args,
+                    contract.entryPoint
+                  )
+              )
+            )
+          } else if (contract.address.isContractHash) {
+            Success(
+              ipc.DeployPayload.Payload.StoredContractHash(
+                io.casperlabs.ipc
+                  .StoredContractHash(
+                    contract.getContractHash,
+                    args,
+                    contract.entryPoint
+                  )
+              )
+            )
+          } else
+            Failure(
+              new SmartContractEngineError(
+                s"${contract.address} is not valid contract pointer. Only hash and named key label are supported."
+              )
+            )
+
+        case Deploy.Code.Contract
+              .StoredVersionedContract(contract) =>
+          if (contract.address.isName) {
+            Success(
+              ipc.DeployPayload.Payload.StoredPackageByName(
+                io.casperlabs.ipc
+                  .StoredContractPackage(
+                    contract.getName,
+                    contract.entryPoint,
+                    args,
+                    contract.version match {
+                      case 0 => ipc.StoredContractPackage.OptionalVersion.Empty
+                      case v => ipc.StoredContractPackage.OptionalVersion.Version(v)
+                    }
+                  )
+              )
+            )
+          } else if (contract.address.isPackageHash) {
+            Success(
+              ipc.DeployPayload.Payload.StoredPackageByHash(
+                io.casperlabs.ipc
+                  .StoredContractPackageHash(
+                    contract.getPackageHash,
+                    contract.entryPoint,
+                    args,
+                    contract.version match {
+                      case 0 => ipc.StoredContractPackageHash.OptionalVersion.Empty
+                      case v => ipc.StoredContractPackageHash.OptionalVersion.Version(v)
+                    }
+                  )
+              )
+            )
+          } else
+            Failure(
+              new SmartContractEngineError(
+                s"${contract.address} is not valid contract pointer. Only hash and named key label are supported."
+              )
+            )
+
+        case Deploy.Code.Contract.TransferContract(_) =>
+          Success(
+            ipc.DeployPayload.Payload.Transfer(
+              io.casperlabs.ipc.Transfer(args)
+            )
+          )
+
         case Deploy.Code.Contract.Empty =>
-          ipc.DeployPayload.Payload.DeployCode(ipc.DeployCode(ByteString.EMPTY, args))
+          Success(ipc.DeployPayload.Payload.DeployCode(ipc.DeployCode(ByteString.EMPTY, args)))
       }
-      ipc.DeployPayload(payload)
+      payload.map(ipc.DeployPayload(_))
     }
   }
 
@@ -663,7 +746,7 @@ object ProtoUtil {
   }
 
   def createdBy(validatorId: ValidatorIdentity, block: Block): Boolean =
-    block.getHeader.validatorPublicKey == ByteString.copyFrom(validatorId.publicKey)
+    block.getHeader.validatorPublicKeyHash == ByteString.copyFrom(validatorId.publicKeyHash)
 
   def randomAccountAddress(): ByteString =
     ByteString.copyFrom(scala.util.Random.nextString(32), "UTF-8")

@@ -9,7 +9,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use types::{account::PublicKey, ApiError, U512};
+use types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -22,8 +22,10 @@ lazy_static! {
     static ref ACCOUNT_1_INITIAL_BALANCE: U512 = *DEFAULT_PAYMENT;
 }
 
-const ACCOUNT_1_ADDR: PublicKey = PublicKey::ed25519_from([1u8; 32]);
-const ACCOUNT_2_ADDR: PublicKey = PublicKey::ed25519_from([2u8; 32]);
+const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
+const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
+const ARG_TARGET: &str = "target";
+const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
 #[test]
@@ -52,7 +54,7 @@ fn should_transfer_to_account() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_1_ADDR, *TRANSFER_1_AMOUNT),
+        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
     .build();
 
@@ -110,7 +112,7 @@ fn should_transfer_from_account_to_account() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_1_ADDR, *TRANSFER_1_AMOUNT),
+        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
     .build();
 
@@ -144,7 +146,7 @@ fn should_transfer_from_account_to_account() {
     let exec_request_2 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_2_ADDR, *TRANSFER_2_AMOUNT),
+        runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => *TRANSFER_2_AMOUNT },
     )
     .build();
 
@@ -205,7 +207,7 @@ fn should_transfer_to_existing_account() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_1_ADDR, *TRANSFER_1_AMOUNT),
+        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
     .build();
 
@@ -242,7 +244,7 @@ fn should_transfer_to_existing_account() {
     let exec_request_2 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_2_ADDR, *TRANSFER_2_AMOUNT),
+        runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => *TRANSFER_2_AMOUNT },
     )
     .build();
     builder.exec(exec_request_2).expect_success().commit();
@@ -280,20 +282,20 @@ fn should_fail_when_insufficient_funds() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_1_ADDR, *TRANSFER_1_AMOUNT),
+        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_2_ADDR, *TRANSFER_2_AMOUNT_WITH_ADV),
+        runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => *TRANSFER_2_AMOUNT_WITH_ADV },
     )
     .build();
 
     let exec_request_3 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
-        (ACCOUNT_2_ADDR, *TRANSFER_TOO_MUCH),
+        runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => *TRANSFER_TOO_MUCH },
     )
     .build();
 
@@ -330,14 +332,14 @@ fn should_transfer_total_amount() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        (ACCOUNT_1_ADDR, *ACCOUNT_1_INITIAL_BALANCE),
+        runtime_args! { "target" => ACCOUNT_1_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE },
     )
     .build();
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        (ACCOUNT_2_ADDR, *ACCOUNT_1_INITIAL_BALANCE),
+        runtime_args! { "target" => ACCOUNT_2_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE },
     )
     .build();
     builder

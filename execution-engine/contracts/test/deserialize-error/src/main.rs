@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![allow(unused_imports)]
 
 extern crate alloc;
 
@@ -8,8 +9,19 @@ extern crate alloc;
 use alloc::vec;
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use contract::{args_parser::ArgsParser, contract_api::storage};
-use types::{bytesrepr::ToBytes, ContractRef, Key};
+use contract::{
+    self,
+    contract_api::{self, storage},
+    unwrap_or_revert::UnwrapOrRevert,
+};
+use contract_api::runtime;
+use types::{
+    api_error,
+    bytesrepr::{FromBytes, ToBytes},
+    contracts::Parameters,
+    CLType, CLTyped, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    RuntimeArgs,
+};
 
 #[no_mangle]
 pub extern "C" fn do_nothing() {
@@ -19,7 +31,7 @@ pub extern "C" fn do_nothing() {
 
 // Attacker copied to_ptr from `alloc_utils` as it was private
 fn to_ptr<T: ToBytes>(t: T) -> (*const u8, usize, Vec<u8>) {
-    let bytes = t.into_bytes().expect("Unable to serialize data");
+    let bytes = t.into_bytes().unwrap_or_revert();
     let ptr = bytes.as_ptr();
     let size = bytes.len();
     (ptr, size, bytes)
@@ -29,38 +41,66 @@ mod malicious_ffi {
     // Potential attacker has available every FFI for himself
     extern "C" {
         pub fn call_contract(
-            key_ptr: *const u8,
-            key_size: usize,
-            args_ptr: *const u8,
-            args_size: usize,
-            extra_urefs_ptr: *const u8,
-            extra_urefs_size: usize,
-        ) -> usize;
+            contract_hash_ptr: *const u8,
+            contract_hash_size: usize,
+            entry_point_name_ptr: *const u8,
+            entry_point_name_size: usize,
+            runtime_args_ptr: *const u8,
+            runtime_args_size: usize,
+            result_size: *mut usize,
+        ) -> i32;
     }
 }
 
 // This is half-baked runtime::call_contract with changed `extra_urefs`
 // parameter with a desired payload that's supposed to bring the node down.
-fn my_call_contract<A: ArgsParser>(c_ptr: ContractRef, args: A) {
-    let contract_key: Key = c_ptr.into();
-    let (key_ptr, key_size, _bytes1) = to_ptr(contract_key);
-    let (args_ptr, args_size, _bytes2) = ArgsParser::parse(args).map(to_ptr).unwrap();
+pub fn my_call_contract(
+    contract_hash: ContractHash,
+    _entry_point_name: &str,
+    runtime_args: RuntimeArgs,
+) -> usize {
+    let (contract_hash_ptr, contract_hash_size, _bytes1) = to_ptr(contract_hash);
 
-    let mut extra_urefs = vec![255, 255, 255, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let _res_size = unsafe {
-        malicious_ffi::call_contract(
-            key_ptr,
-            key_size,
-            args_ptr,
-            args_size,
-            extra_urefs.as_mut_ptr(),
-            extra_urefs.len(),
-        )
-    };
+    let malicious_string = vec![255, 255, 255, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+    let (runtime_args_ptr, runtime_args_size, _bytes2) = to_ptr(runtime_args);
+
+    {
+        let mut bytes_written = 0usize;
+        let ret = unsafe {
+            malicious_ffi::call_contract(
+                contract_hash_ptr,
+                contract_hash_size,
+                malicious_string.as_ptr(),
+                malicious_string.len(),
+                runtime_args_ptr,
+                runtime_args_size,
+                &mut bytes_written as *mut usize,
+            )
+        };
+        api_error::result_from(ret).unwrap_or_revert();
+        bytes_written
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let do_nothing: ContractRef = storage::store_function_at_hash("do_nothing", BTreeMap::new());
-    my_call_contract(do_nothing, ());
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
+
+        let entry_point = EntryPoint::new(
+            "do_nothing",
+            Parameters::default(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+
+        entry_points.add_entry_point(entry_point);
+
+        entry_points
+    };
+    let (contract_hash, _contract_version) = storage::new_contract(entry_points, None, None, None);
+
+    my_call_contract(contract_hash, "do_nothing", RuntimeArgs::default());
 }

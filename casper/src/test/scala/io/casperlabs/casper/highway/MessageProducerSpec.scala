@@ -3,7 +3,7 @@ package io.casperlabs.casper.highway
 import cats._
 import cats.implicits._
 import com.google.protobuf.ByteString
-import io.casperlabs.crypto.Keys.PublicKey
+import io.casperlabs.crypto.Keys
 import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
 import io.casperlabs.casper.{DeploySelection, ValidatorIdentity}
 import io.casperlabs.casper.consensus.{Bond, Era}
@@ -49,7 +49,7 @@ class MessageProducerSpec extends FlatSpec with Matchers with Inspectors with Hi
             tips   <- dag.latestInEra(era.keyBlockHash)
             latest <- tips.latestMessages
             justifications = latest.map {
-              case (v, ms) => PublicKey(v) -> ms
+              case (v, ms) => Keys.PublicKeyHash(v) -> ms
             }
             b <- mp.block(
                   era.keyBlockHash,
@@ -126,7 +126,7 @@ class MessageProducerSpec extends FlatSpec with Matchers with Inspectors with Hi
     implicit timer => implicit db =>
       new Fixture(length = 3 * eraDuration) { self =>
         val (privateKey, publicKey) = Ed25519.newKeyPair
-        val validatorId             = PublicKey(ByteString.copyFrom(publicKey))
+        val validatorId             = Keys.PublicKeyHash(ByteString.copyFrom(Ed25519.publicKeyHash(publicKey)))
 
         override lazy val messageProducer: MessageProducer[Task] = {
           implicit val deployBuffer    = DeployBuffer.create[Task](chainName, minTtl = Duration.Zero)
@@ -221,7 +221,7 @@ class MessageProducerSpec extends FlatSpec with Matchers with Inspectors with Hi
     implicit timer => implicit db =>
       new Fixture(length = 3 * eraDuration) { self =>
         val (privateKey, publicKey) = Ed25519.newKeyPair
-        val validatorId             = PublicKey(ByteString.copyFrom(publicKey))
+        val validatorId             = Keys.PublicKeyHash(ByteString.copyFrom(Ed25519.publicKeyHash(publicKey)))
 
         override lazy val messageProducer: MessageProducer[Task] = {
           implicit val deployBuffer    = DeployBuffer.create[Task](chainName, minTtl = Duration.Zero)

@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 
 import cats.syntax.option._
 import guru.nidi.graphviz.engine.Format
+import io.casperlabs.casper.consensus.state.SemVer
 import io.casperlabs.client.BuildInfo
 import io.casperlabs.crypto.Keys.PublicKey
 import io.casperlabs.crypto.codec.{Base16, Base64}
@@ -29,6 +30,23 @@ object Options {
     def sessionRequired: Boolean = true
     def paymentPathName: String  = "payment"
 
+    implicit val semVerConverter: ValueConverter[SemVer] = {
+      val semVerRegex = """(\d+)\.(\d+)\.(\d+)""".r
+
+      implicitly[ValueConverter[String]].flatMap { semVerStr =>
+        semVerRegex
+          .findFirstMatchIn(semVerStr)
+          .map {
+            case semVerRegex(major, minor, patch) => SemVer(major.toInt, minor.toInt, patch.toInt)
+          }
+          .fold[Either[String, Option[SemVer]]](
+            Left(
+              s"$semVerStr is not a valid semantic version that matches the pattern `major.minor.patch`."
+            )
+          )(semVer => Right(Option(semVer)))
+      }
+    }
+
     // Session code on disk.
     val session =
       opt[File](
@@ -37,25 +55,32 @@ object Options {
         validate = fileCheck
       )
 
-    val sessionHash =
+    val sessionContractHash =
       opt[String](
         required = false,
-        descr = "Hash of the stored contract to be called in the session; base16 encoded.",
+        descr = "Hash of the stored contract hash to be called in the session; base16 encoded.",
         validate = hashCheck
       )
 
-    val sessionName =
+    val sessionPackageHash = opt[String](
+      required = false,
+      descr =
+        "Hash of the stored contract package hash to be called in the session; base16 encoded.",
+      validate = hashCheck
+    )
+
+    val sessionContractName =
       opt[String](
         required = false,
         descr =
           "Name of the stored contract (associated with the executing account) to be called in the session."
       )
 
-    val sessionUref =
+    val sessionPackageName =
       opt[String](
         required = false,
-        descr = "URef of the stored contract to be called in the session; base16 encoded.",
-        validate = hashCheck
+        descr =
+          "Name of the stored contract package (associated with the executing account) to be called in the session."
       )
 
     val sessionArgs =
@@ -63,6 +88,18 @@ object Options {
         required = false,
         descr =
           """JSON encoded list of Deploy.Arg protobuf messages for the session, e.g. '[{"name": "amount", "value": {"long_value": 123456}}]'"""
+      )
+
+    val sessionEntryPoint =
+      opt[String](
+        required = false,
+        descr = "Name of the method that will be used when calling the contract."
+      )
+
+    val sessionVer =
+      opt[Int](
+        required = false,
+        descr = "Version of the called contract."
       )
 
     val payment =
@@ -73,18 +110,31 @@ object Options {
         validate = fileCheck
       )
 
-    val paymentHash =
+    val paymentContractHash =
       opt[String](
         required = false,
         descr = "Hash of the stored contract to be called in the payment; base16 encoded.",
         validate = hashCheck
       )
 
-    val paymentName =
+    val paymentPackageHash =
+      opt[String](
+        required = false,
+        descr = "Hash of the stored contract package to be called in the payment; base16 encoded.",
+        validate = hashCheck
+      )
+
+    val paymentContractName =
       opt[String](
         required = false,
         descr =
           "Name of the stored contract (associated with the executing account) to be called in the payment."
+      )
+    val paymentPackageName =
+      opt[String](
+        required = false,
+        descr =
+          "Name of the stored contract package (associated with the executing account) to be called in the payment."
       )
 
     val paymentUref =
@@ -99,6 +149,18 @@ object Options {
         required = false,
         descr =
           """JSON encoded list of Deploy.Arg protobuf messages for the payment, e.g. '[{"name": "amount", "value": {"big_int": {"value": "123456", "bit_width": 512}}}]'"""
+      )
+
+    val paymentEntryPoint =
+      opt[String](
+        required = false,
+        descr = "Name of the method that will be used when calling the contract."
+      )
+
+    val paymentVer =
+      opt[Int](
+        required = false,
+        descr = "Version of the payment contract."
       )
 
     val gasPrice = opt[Long](
@@ -147,19 +209,12 @@ object Options {
       opt[Long](descr = "Timeout in seconds.", default = Option(TIMEOUT_SECONDS_DEFAULT.toSeconds))
 
     addValidation {
-      val sessionsProvided =
-        List(session.isDefined, sessionHash.isDefined, sessionName.isDefined, sessionUref.isDefined)
-          .count(identity)
-      val paymentsProvided =
-        List(payment.isDefined, paymentHash.isDefined, paymentName.isDefined, paymentUref.isDefined)
-          .count(identity)
-      if (sessionRequired && sessionsProvided == 0)
+      val storedPaymentCode = paymentContractHash.isDefined || paymentContractName.isDefined || paymentPackageHash.isDefined || paymentPackageName.isDefined
+      val sessionProvided   = sessionPackageHash.isDefined || sessionContractHash.isDefined || sessionContractName.isDefined || sessionPackageName.isDefined
+
+      if (sessionRequired && !session.isDefined && !sessionProvided)
         Left("No session contract options provided; please specify exactly one.")
-      else if (sessionsProvided > 1)
-        Left("Multiple session contract options provided; please specify exactly one.")
-      else if (paymentsProvided > 1)
-        Left("Multiple payment contract options provided; please specify exactly one.")
-      else if (paymentsProvided == 0 && paymentAmount.isEmpty)
+      else if (storedPaymentCode && paymentAmount.isEmpty)
         Left(
           "No payment contract options provided; please specify --payment-amount for the standard payment."
         )
@@ -604,9 +659,8 @@ final case class Options(arguments: Seq[String]) extends ScallopConf(arguments) 
     val keyType =
       opt[String](
         name = "type",
-        descr =
-          "Type of base key. Must be one of 'hash', 'uref', 'address' or 'local'. For 'local' key type, 'key' value format is {seed}:{rest}, where both parts are hex encoded.",
-        validate = s => Set("hash", "uref", "address", "local").contains(s.toLowerCase),
+        descr = "Type of base key. Must be one of 'hash', 'uref', 'address'.",
+        validate = s => Set("hash", "uref", "address").contains(s.toLowerCase),
         default = Option("address")
       )
 
@@ -615,16 +669,7 @@ final case class Options(arguments: Seq[String]) extends ScallopConf(arguments) 
         name = "key",
         descr = "Base16 encoding of the base key.",
         required = true,
-        validate = (key: String) => {
-          keyType() match {
-            case "local" =>
-              key.split(":") match {
-                case arr @ Array(_, _) => arr.forall(hexCheck)
-                case _                 => false
-              }
-            case _ => hexCheck(key)
-          }
-        }
+        validate = (key: String) => hexCheck(key)
       )
 
     val path =

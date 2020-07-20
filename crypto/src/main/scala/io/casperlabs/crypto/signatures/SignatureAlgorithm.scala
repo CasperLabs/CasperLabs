@@ -2,12 +2,13 @@ package io.casperlabs.crypto.signatures
 
 import java.io.StringReader
 
-import io.casperlabs.crypto.Keys.{PrivateKey, PublicKey, Signature}
+import io.casperlabs.crypto.Keys.{PrivateKey, PublicKey, PublicKeyHash, Signature}
 import io.casperlabs.crypto.codec.Base64
 import org.bouncycastle.openssl.PEMKeyPair
-
 import scala.util.control.NonFatal
 import scala.util.{Random, Try}
+import io.casperlabs.crypto.Keys
+import java.math.BigInteger
 
 /**
   * Useful links:
@@ -54,18 +55,18 @@ sealed trait SignatureAlgorithm {
     val signature = sign(a, privateKey)
     verify(a, signature, publicKey)
   }
+
+  /** Compute a unique hash from the algorithm name and a public key, used for accounts. */
+  val publicKeyHash: PublicKey => PublicKeyHash = Keys.publicKeyHash(name)
 }
 
 object SignatureAlgorithm {
 
-  /**
-    * TODO: Temporarily disabled `secp256k1` because of errors,
-    * because some parts of the node complain if validator ID's size
-    * doesn't equal to 32 bytes
-    */
   def unapply(alg: String): Option[SignatureAlgorithm] = alg match {
-    case "ed25519" => Some(Ed25519)
-    //    case "secp256k1" => Some(Secp256k1)
+    case "ed25519"   => Some(Ed25519)
+    case "secp256k1" => Some(Secp256k1)
+    case "secp256r1" => Some(Secp256r1)
+    // Not matching prime256v1 (equivalent to secp256r1) so that we only have 1 version for an account hash.
     case _ => None
   }
 
@@ -75,7 +76,6 @@ object SignatureAlgorithm {
     */
   object Ed25519 extends SignatureAlgorithm {
 
-    import io.casperlabs.crypto.codec.Base64
     import org.abstractj.kalium.keys.{SigningKey, VerifyKey}
 
     override def name: String = "ed25519"
@@ -204,8 +204,7 @@ object SignatureAlgorithm {
       Signature(new SigningKey(sec).sign(data))
   }
 
-  object Secp256k1 extends SignatureAlgorithm {
-
+  trait Secp256 extends SignatureAlgorithm {
     import java.security.KeyPairGenerator
     import java.security.interfaces.ECPrivateKey
     import java.security.spec.ECGenParameterSpec
@@ -213,15 +212,12 @@ object SignatureAlgorithm {
     import com.google.common.base.Strings
     import io.casperlabs.crypto.codec.Base16
     import io.casperlabs.crypto.util.SecureRandomUtil
-    import org.bitcoin._
     import org.bouncycastle.jce.provider.BouncyCastleProvider
 
-    private val PrivateKeyLength = 32
-    private val PublicKeyLength  = 65
-    private val provider         = new BouncyCastleProvider()
-    private val curveName        = "secp256k1"
-
-    override def name: String = curveName
+    // Supported algorithms:
+    // http://www.bouncycastle.org/wiki/pages/viewpage.action?pageId=362269
+    protected val PrivateKeyLength = 32
+    protected val PublicKeyLength  = 65
 
     /**
       * Expects the key to be in PEM format without parameters section or raw key encoded in base64.
@@ -298,38 +294,36 @@ object SignatureAlgorithm {
       }
 
     override def newKeyPair: (PrivateKey, PublicKey) = {
-      val kpg = KeyPairGenerator.getInstance("ECDSA", provider)
-      kpg.initialize(new ECGenParameterSpec(curveName), SecureRandomUtil.secureRandomNonBlocking)
+      val kpg = KeyPairGenerator.getInstance("ECDSA", new BouncyCastleProvider())
+      kpg.initialize(new ECGenParameterSpec(name), SecureRandomUtil.secureRandomNonBlocking)
       val kp = kpg.generateKeyPair
 
-      val padded =
-        Strings.padStart(kp.getPrivate.asInstanceOf[ECPrivateKey].getS.toString(16), 64, '0')
-      val sec = PrivateKey(Base16.decode(padded))
-      val pub = Secp256k1.tryToPublic(sec)
+      val padded = toPaddedHex(kp.getPrivate.asInstanceOf[ECPrivateKey].getS)
 
-      (PrivateKey(sec), PublicKey(pub.get))
+      val sec = PrivateKey(Base16.decode(padded))
+      val pub = PublicKey(tryToPublic(sec).get)
+
+      (sec, pub)
     }
 
-    /**
-      * Verifies the given signature.
-      *
-      * @param data      The data which was signed, must be exactly 32 bytes
-      * @param signature The signature
-      * @param pub       The public key which did the signing
-      * @return Boolean value of verification
-      */
-    def verify(data: Array[Byte], signature: Signature, pub: PublicKey): Boolean =
+    protected def toPaddedHex(i: BigInteger): String =
+      Strings.padStart(i.toString(16), 64, '0')
+  }
+
+  // Key type used by Bitcoin and Ethereum.
+  object Secp256k1 extends Secp256 {
+    import org.bitcoin.NativeSecp256k1
+
+    override def name: String = "secp256k1"
+
+    override def verify(data: Array[Byte], signature: Signature, pub: PublicKey): Boolean =
       NativeSecp256k1.verify(data, signature, pub)
 
-    /**
-      * libsecp256k1 Create an ECDSA signature.
-      *
-      * @param data Message hash, 32 bytes
-      * @param sec  Secret key, 32 bytes
-      * @return Byte array of signature
-      */
     override def sign(data: Array[Byte], sec: PrivateKey): Signature =
       Signature(NativeSecp256k1.sign(data, sec))
+
+    override def tryToPublic(seckey: PrivateKey): Option[PublicKey] =
+      Try(PublicKey(NativeSecp256k1.computePubkey(seckey))).toOption
 
     /**
       * libsecp256k1 Seckey Verify - returns true if valid, false if invalid
@@ -344,13 +338,87 @@ object SignatureAlgorithm {
     def secKeyVerify(seckey: Array[Byte]): Boolean =
       NativeSecp256k1.secKeyVerify(seckey)
 
-    /**
-      * libsecp256k1 Compute Pubkey - computes public key from secret key
-      *
-      * @param seckey ECDSA Secret key, 32 bytes
-      */
-    def tryToPublic(seckey: PrivateKey): Option[PublicKey] =
-      Try(PublicKey(NativeSecp256k1.computePubkey(seckey))).toOption
+  }
+
+  // Key type supported by Secure Enclave.
+  object Secp256r1 extends Secp256 {
+    // https://metamug.com/article/security/sign-verify-digital-signature-ecdsa-java.html
+
+    import java.security.{AlgorithmParameters, KeyFactory}
+    import java.security.spec.{
+      ECGenParameterSpec,
+      ECParameterSpec,
+      ECPoint,
+      ECPrivateKeySpec,
+      ECPublicKeySpec
+    }
+    import org.bouncycastle.asn1.sec.SECNamedCurves
+    import org.bouncycastle.crypto.params.ECDomainParameters
+
+    override def name: String = "secp256r1" // same as prime256v1
+
+    // https://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#Signature
+    private def getSigner     = java.security.Signature.getInstance("NONEwithECDSA")
+    private def getKeyFactory = KeyFactory.getInstance("EC")
+
+    // See Example 5 at https://www.programcreek.com/java-api-examples/index.php?api=java.security.spec.ECPrivateKeySpec
+    def toPrivateKey(sec: PrivateKey): java.security.PrivateKey = {
+      val keySpec = new ECPrivateKeySpec(new BigInteger(1, sec), parameterSpec)
+      getKeyFactory.generatePrivate(keySpec)
+    }
+
+    // See Example 5 at https://www.programcreek.com/java-api-examples/index.php?api=java.security.spec.ECPublicKeySpec
+    def toPublicKey(pub: PublicKey): java.security.PublicKey = {
+      require(
+        pub.size == PublicKeyLength,
+        s"Expected the public key to be ${PublicKeyLength} long; got ${pub.size}"
+      )
+      require(
+        pub(0) == 0x04,
+        "EC uncompressed point indicator with byte value 04 missing"
+      )
+      val x       = new BigInteger(1, pub.slice(1, 1 + PublicKeyLength / 2))
+      val y       = new BigInteger(1, pub.slice(1 + PublicKeyLength / 2, PublicKeyLength))
+      val q       = new ECPoint(x, y)
+      val keySpec = new ECPublicKeySpec(q, parameterSpec)
+      getKeyFactory.generatePublic(keySpec)
+    }
+
+    // https://stackoverflow.com/questions/22003407/bouncy-castle-ecdsa-create-public-key-from-private-key
+    // https://github.com/kjur/jsrsasign/blob/master/src/ecdsa-modified-1.0.js#L176
+    override def tryToPublic(seckey: PrivateKey): Option[PublicKey] =
+      Try {
+        val d = new BigInteger(1, seckey)
+        val q = domainParameters.getG.multiply(d)
+        PublicKey(q.getEncoded(false))
+      }.toOption
+
+    private val parameterSpec: ECParameterSpec = {
+      val algorithm = AlgorithmParameters.getInstance("EC")
+      algorithm.init(new ECGenParameterSpec(name))
+      algorithm.getParameterSpec(classOf[ECParameterSpec])
+    }
+
+    private val domainParameters = {
+      val curve = SECNamedCurves.getByName(name)
+      new ECDomainParameters(curve.getCurve, curve.getG, curve.getN, curve.getH)
+    }
+
+    override def verify(data: Array[Byte], signature: Signature, pub: PublicKey): Boolean = {
+      val publicKey = toPublicKey(pub)
+      val signer    = getSigner
+      signer.initVerify(publicKey)
+      signer.update(data)
+      signer.verify(signature)
+    }
+
+    override def sign(data: Array[Byte], sec: PrivateKey): Signature = {
+      val privateKey = toPrivateKey(sec)
+      val signer     = getSigner
+      signer.initSign(privateKey)
+      signer.update(data)
+      Signature(signer.sign())
+    }
   }
 
 }

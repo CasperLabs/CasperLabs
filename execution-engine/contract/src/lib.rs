@@ -16,11 +16,11 @@
 //!
 //! use casperlabs_contract::{
 //!     contract_api::{runtime, storage},
-//!     unwrap_or_revert::UnwrapOrRevert,
 //! };
-//! use casperlabs_types::{ApiError, Key, URef};
+//! use casperlabs_types::{Key, URef};
 //!
 //! const KEY: &str = "special_value";
+//! const ARG_VALUE: &str = "value";
 //!
 //! fn store(value: i32) {
 //!     // Store `value` under a new unforgeable reference.
@@ -37,13 +37,7 @@
 //! #[no_mangle]
 //! pub extern "C" fn call() {
 //!     // Get the optional first argument supplied to the argument.
-//!     let value: i32 = runtime::get_arg(0)
-//!         // Unwrap the `Option`, returning an error if there was no argument supplied.
-//!         .unwrap_or_revert_with(ApiError::MissingArgument)
-//!         // Unwrap the `Result` containing the deserialized argument or return an error
-//!         // if there was a deserialization error.
-//!         .unwrap_or_revert_with(ApiError::InvalidArgument);
-//!
+//!     let value: i32 = runtime::get_named_arg(ARG_VALUE);
 //!     store(value);
 //! }
 //! # fn main() {}
@@ -55,14 +49,11 @@
 //! submodules.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(
-    alloc_error_handler,
-    alloc_layout_extra,
-    allocator_api,
-    core_intrinsics,
-    lang_items
+#![cfg_attr(
+    not(feature = "std"),
+    feature(alloc_error_handler, core_intrinsics, lang_items)
 )]
-#![doc(html_root_url = "https://docs.rs/casperlabs-contract/0.5.1")]
+#![doc(html_root_url = "https://docs.rs/casperlabs-contract/0.6.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -80,7 +71,6 @@ extern crate std;
 #[global_allocator]
 pub static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-pub mod args_parser;
 pub mod contract_api;
 pub mod ext_ffi;
 #[cfg(not(any(feature = "std", test)))]

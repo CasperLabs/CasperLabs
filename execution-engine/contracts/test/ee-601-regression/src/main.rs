@@ -9,14 +9,11 @@ use contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, Phase, URef, U512};
+use types::{ApiError, Phase, RuntimeArgs, URef, U512};
 
 const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 const NEW_UREF_RESULT_UREF_NAME: &str = "new_uref_result";
-
-enum Arg {
-    Amount = 0,
-}
+const ARG_AMOUNT: &str = "amount";
 
 #[repr(u16)]
 enum Error {
@@ -27,17 +24,16 @@ enum Error {
 pub extern "C" fn call() {
     let phase = runtime::get_phase();
     if phase == Phase::Payment {
-        let amount: U512 = runtime::get_arg(Arg::Amount as u32)
-            .unwrap_or_revert_with(ApiError::MissingArgument)
-            .unwrap_or_revert_with(ApiError::InvalidArgument);
+        let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
-        let main_purse: URef = account::get_main_purse();
+        let payment_purse: URef = runtime::call_contract(
+            system::get_proof_of_stake(),
+            GET_PAYMENT_PURSE,
+            RuntimeArgs::default(),
+        );
 
-        let pos_pointer = system::get_proof_of_stake();
-
-        let payment_purse: URef = runtime::call_contract(pos_pointer, (GET_PAYMENT_PURSE,));
-
-        system::transfer_from_purse_to_purse(main_purse, payment_purse, amount).unwrap_or_revert()
+        system::transfer_from_purse_to_purse(account::get_main_purse(), payment_purse, amount)
+            .unwrap_or_revert()
     }
 
     let value: Option<&str> = {

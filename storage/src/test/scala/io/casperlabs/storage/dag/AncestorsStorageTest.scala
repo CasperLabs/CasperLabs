@@ -43,7 +43,7 @@ class AncestorsStorageTest
     b.withHeader(
         b.getHeader
           .withParentHashes(Seq.empty)
-          .withValidatorPublicKey(ByteString.EMPTY)
+          .withValidatorPublicKeyHash(ByteString.EMPTY)
       )
       .clearSignature
   }

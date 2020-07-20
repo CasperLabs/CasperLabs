@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use types::{ApiError, CLValue, Key, U512};
+use types::{runtime_args, ApiError, CLValue, Key, RuntimeArgs, U512};
 
 use engine_test_support::{
     internal::{
@@ -12,6 +12,9 @@ use engine_test_support::{
 
 const CONTRACT_TRANSFER_PURSE_TO_PURSE: &str = "transfer_purse_to_purse.wasm";
 const PURSE_TO_PURSE_AMOUNT: u64 = 42;
+const ARG_SOURCE: &str = "source";
+const ARG_TARGET: &str = "target";
+const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
 #[test]
@@ -22,7 +25,11 @@ fn should_run_purse_to_purse_transfer() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_PURSE,
-        (source, target, U512::from(PURSE_TO_PURSE_AMOUNT)),
+        runtime_args! {
+            ARG_SOURCE => source,
+            ARG_TARGET => target,
+            ARG_AMOUNT => U512::from(PURSE_TO_PURSE_AMOUNT)
+        },
     )
     .build();
 
@@ -77,9 +84,9 @@ fn should_run_purse_to_purse_transfer() {
         .remove_access_rights()
         .as_string();
 
-    let mint_contract_uref = builder.get_mint_contract_uref().remove_access_rights();
+    let mint_contract_hash = builder.get_mint_contract_hash();
     let mint_contract = builder
-        .get_contract(mint_contract_uref)
+        .get_contract(mint_contract_hash)
         .expect("should have mint contract");
 
     // Find `purse:secondary`.
@@ -112,9 +119,9 @@ fn should_run_purse_to_purse_transfer_with_error() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_PURSE,
-        (source, target, U512::from(999_999_999_999i64)),
+        runtime_args! { ARG_SOURCE => source, ARG_TARGET => target, ARG_AMOUNT => U512::from(999_999_999_999i64) },
     )
-    .build();
+        .build();
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
@@ -167,7 +174,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .remove_access_rights()
         .as_string();
 
-    let mint_contract_uref = builder.get_mint_contract_uref();
+    let mint_contract_uref = builder.get_mint_contract_hash();
     let mint_contract = builder
         .get_contract(mint_contract_uref)
         .expect("should have mint contract");

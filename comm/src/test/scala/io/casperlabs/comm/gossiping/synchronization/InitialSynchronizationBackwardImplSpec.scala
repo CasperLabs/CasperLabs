@@ -5,6 +5,7 @@ import java.util.concurrent.TimeoutException
 import cats.effect.concurrent.Semaphore
 import cats.syntax.either._
 import com.google.protobuf.ByteString
+import io.casperlabs.crypto.Keys.PublicKeyHashBS
 import io.casperlabs.casper.consensus.{Approval, Block, BlockSummary, DeploySummary}
 import io.casperlabs.comm.discovery.{Node, NodeDiscovery, NodeIdentifier}
 import io.casperlabs.comm.gossiping._
@@ -246,7 +247,7 @@ object InitialSynchronizationBackwardImplSpec extends ArbitraryConsensus {
     }
   }
 
-  class MockGossipService(latestMessages: Map[ByteString, Set[Message]])
+  class MockGossipService(latestMessages: Map[PublicKeyHashBS, Set[Message]])
       extends NoOpsGossipService[Task] {
 
     override def streamLatestMessages(

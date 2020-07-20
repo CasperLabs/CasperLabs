@@ -6,7 +6,7 @@ import com.google.protobuf.ByteString
 import io.casperlabs.casper.consensus.Block.ProcessedDeploy
 import io.casperlabs.casper.consensus.{Block, Deploy, DeploySummary}
 import io.casperlabs.casper.consensus.info.DeployInfo
-import io.casperlabs.crypto.Keys.PublicKeyBS
+import io.casperlabs.crypto.Keys.PublicKeyHashBS
 import io.casperlabs.metrics.Metered
 import io.casperlabs.storage.{BlockHash, DeployHash}
 import simulacrum.typeclass
@@ -78,7 +78,7 @@ import cats.mtl.ApplicativeAsk
 @typeclass trait DeployBufferReader[F[_]] {
   def readProcessed: F[List[Deploy]]
 
-  def readProcessedByAccount(account: ByteString): F[List[Deploy]]
+  def readProcessedByAccount(account: PublicKeyHashBS): F[List[Deploy]]
 
   def readProcessedHashes: F[List[DeployHash]]
 
@@ -133,7 +133,7 @@ import cats.mtl.ApplicativeAsk
     *      timestamp > firstTimestamp or timestamp == firstTimestamp && deployHash > firstDeployHash
     */
   def getDeploysByAccount(
-      account: PublicKeyBS,
+      account: PublicKeyHashBS,
       limit: Int,
       lastTimeStamp: Long,
       lastDeployHash: DeployHash,
@@ -194,7 +194,7 @@ object DeployStorageReader {
     abstract override def readProcessed =
       incAndMeasure("readProcessed", super.readProcessed)
 
-    abstract override def readProcessedByAccount(account: ByteString) =
+    abstract override def readProcessedByAccount(account: PublicKeyHashBS) =
       incAndMeasure("readProcessedByAccount", super.readProcessedByAccount(account))
 
     abstract override def readProcessedHashes =
@@ -240,7 +240,7 @@ object DeployStorageReader {
       incAndMeasure("getDeployInfos", super.getDeployInfos(deploys))
 
     abstract override def getDeploysByAccount(
-        account: PublicKeyBS,
+        account: PublicKeyHashBS,
         limit: Int,
         lastTimeStamp: Long,
         lastDeployHash: DeployHash,

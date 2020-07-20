@@ -5,31 +5,30 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use types::{AccessRights, ApiError, ContractRef, URef};
+use contract::contract_api::runtime;
+use types::{contracts::ContractVersion, runtime_args, ContractPackageHash, RuntimeArgs};
 
-#[repr(u16)]
-enum Args {
-    DoNothingURef = 0,
-    PurseName = 1,
-}
-
-#[repr(u16)]
-enum CustomError {
-    MissingDoNothingURefArg = 0,
-    MissingPurseNameArg = 1,
-}
+const ENTRY_FUNCTION_NAME: &str = "delegate";
+const PURSE_NAME_ARG_NAME: &str = "purse_name";
+const ARG_CONTRACT_PACKAGE: &str = "contract_package";
+const ARG_NEW_PURSE_NAME: &str = "new_purse_name";
+const ARG_VERSION: &str = "version";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let new_purse_name: String = runtime::get_arg(Args::PurseName as u32)
-        .unwrap_or_revert_with(ApiError::User(CustomError::MissingPurseNameArg as u16))
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let contract_package_hash: ContractPackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
+    let new_purse_name: String = runtime::get_named_arg(ARG_NEW_PURSE_NAME);
+    let version_number: ContractVersion = runtime::get_named_arg(ARG_VERSION);
+    let contract_version = Some(version_number);
 
-    let arg: URef = runtime::get_arg(Args::DoNothingURef as u32)
-        .unwrap_or_revert_with(ApiError::User(CustomError::MissingDoNothingURefArg as u16))
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let do_nothing = ContractRef::URef(URef::new(arg.addr(), AccessRights::READ));
+    let runtime_args = runtime_args! {
+        PURSE_NAME_ARG_NAME => new_purse_name,
+    };
 
-    runtime::call_contract(do_nothing, (new_purse_name,))
+    runtime::call_versioned_contract(
+        contract_package_hash,
+        contract_version,
+        ENTRY_FUNCTION_NAME,
+        runtime_args,
+    )
 }

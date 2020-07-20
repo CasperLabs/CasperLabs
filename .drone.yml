@@ -131,6 +131,26 @@ steps:
       - "**/casperlabs-engine-grpc-server.spec"
       - "**/rustfmt.toml"
 
+- name: rust-compile-docs-stable-pr
+  commands:
+  - "cd execution-engine/"
+  - "make setup-stable-rs"
+  - "make build-docs-stable-rs"
+  image: "casperlabs/buildenv:latest"
+  failure: "ignore"
+  when:
+    event:
+    - pull_request
+    changeset:
+      includes:
+      - "**/.drone.yml"
+      - "**/**.rs"
+      - "**/**.proto"
+      - "**/Cargo.lock"
+      - "**/Cargo.toml"
+      - "**/casperlabs-engine-grpc-server.spec"
+      - "**/rustfmt.toml"
+
 - name: as-compile-test-pr
   commands:
   - "cd execution-engine"
@@ -143,6 +163,7 @@ steps:
     - pull_request
     changeset:
       includes:
+      - "**/engine-core/**"
       - "**/contract-as/**"
       - "**/contracts-as/**"
 
@@ -256,7 +277,7 @@ steps:
   commands:
   - "sbt test"
   - "export DOCKER_LATEST_TAG=DRONE-${DRONE_BUILD_NUMBER}"
-  - "make docker-build/node docker-build/client"
+  - "make docker-build/node"
   environment:
     _JAVA_OPTIONS: "-Xms2G -Xmx2G -XX:MaxMetaspaceSize=1G"
   image: "casperlabs/buildenv:latest"
@@ -393,9 +414,31 @@ steps:
   - rust-compile-test-bors
   - sbt-test-docker-bors
 
+- name: run-casperlabs-updater-dry-bors
+  commands:
+  - "cd ci/casperlabs-updater"
+  - "cargo run --release -- --dry-run"
+  image: "casperlabs/buildenv:latest"
+  when:
+    branch:
+    - staging
+    - trying
+    changeset:
+      includes:
+      - "**/.drone.yml"
+      - "**/**.rs"
+      - "**/**.proto"
+      - "**/Cargo.lock"
+      - "**/Cargo.toml"
+      - "**/ci/casperlabs-updater/**"
+  depends_on:
+  - rust-compile-test-bors
+  - sbt-test-docker-bors
+
 - name: docker-build-ee-int-bors
   commands:
   - "export DOCKER_LATEST_TAG=DRONE-${DRONE_BUILD_NUMBER}"
+  - "make build-client-contracts"
   - "./integration-testing/build_contracts.sh"
   - "make docker-build/execution-engine"
   - "make docker-build/integration-testing"
@@ -498,85 +541,6 @@ steps:
   depends_on:
   - docker-build-ee-int-bors
   - docker-build-explorer-bors
-
-# Temp adding back for releasev0.19
-- name: run-integration-tests-parallel-0
-  commands:
-  - "cd integration-testing"
-  - "./docker_run_tests.sh --unique_run_num 0"
-  environment:
-    _JAVA_OPTIONS: "-Xms2G -Xmx2G -XX:MaxMetaspaceSize=1G"
-  image: "casperlabs/buildenv:latest"
-  volumes:
-  - name: docker_sock
-    path: "/var/run/docker.sock"
-  - name: temp
-    path: "/tmp"
-  when:
-    branch:
-    - staging
-    - trying
-  depends_on:
-  - run-integration-tests
-
-- name: run-integration-tests-parallel-1
-  commands:
-  - "cd integration-testing"
-  - "./docker_run_tests.sh --unique_run_num 1"
-  environment:
-    _JAVA_OPTIONS: "-Xms2G -Xmx2G -XX:MaxMetaspaceSize=1G"
-  image: "casperlabs/buildenv:latest"
-  volumes:
-  - name: docker_sock
-    path: "/var/run/docker.sock"
-  - name: temp
-    path: "/tmp"
-  when:
-    branch:
-    - staging
-    - trying
-  depends_on:
-  - run-integration-tests
-
-- name: run-integration-tests-parallel-2
-  commands:
-  - "cd integration-testing"
-  - "./docker_run_tests.sh --unique_run_num 2"
-  environment:
-    _JAVA_OPTIONS: "-Xms2G -Xmx2G -XX:MaxMetaspaceSize=1G"
-  image: "casperlabs/buildenv:latest"
-  volumes:
-  - name: docker_sock
-    path: "/var/run/docker.sock"
-  - name: temp
-    path: "/tmp"
-  when:
-    branch:
-    - staging
-    - trying
-  depends_on:
-  - run-integration-tests
-
-- name: run-integration-tests-serial-3
-  commands:
-  - "cd integration-testing"
-  - "./docker_run_tests.sh --unique_run_num 3"
-  environment:
-    _JAVA_OPTIONS: "-Xms2G -Xmx2G -XX:MaxMetaspaceSize=1G"
-  image: "casperlabs/buildenv:latest"
-  volumes:
-  - name: docker_sock
-    path: "/var/run/docker.sock"
-  - name: temp
-    path: "/tmp"
-  when:
-    branch:
-    - staging
-    - trying
-  depends_on:
-  - run-integration-tests-parallel-0
-  - run-integration-tests-parallel-1
-  - run-integration-tests-parallel-2
 
 # The below section is for post-bors push webhooks
 - name: rust-compile-for-make
@@ -686,12 +650,10 @@ steps:
   commands:
   - "make build-client-contracts build-node-contracts"
   - "rm -rf project/target project/project/target"
-  - "sbt update test client/debian:packageBin client/universal:packageZipTarball client/rpm:packageBin node/debian:packageBin node/universal:packageZipTarball node/rpm:packageBin"
+  - "sbt update test node/debian:packageBin node/universal:packageZipTarball node/rpm:packageBin"
   - "export DOCKER_LATEST_TAG=DRONE-${DRONE_BUILD_NUMBER}"
-  - "make docker-build/node docker-build/client"
+  - "make docker-build/node"
   - "mkdir -p artifacts/${DRONE_BRANCH}"
-  - "cp client/target/casperlabs-client_*_all.deb client/target/universal/*.tgz artifacts/${DRONE_BRANCH}"
-  - "cp client/target/rpm/RPMS/noarch/casperlabs-client-*.noarch.rpm artifacts/${DRONE_BRANCH}"
   - "cp node/target/casperlabs-node_*_all.deb node/target/universal/*.tgz artifacts/${DRONE_BRANCH}"
   - "cp node/target/rpm/RPMS/noarch/casperlabs-node-*.noarch.rpm artifacts/${DRONE_BRANCH}"
   environment:
@@ -730,21 +692,6 @@ steps:
   depends_on:
   - package-sbt-artifacts-merge
 
-- name: package-python-client
-  image: "casperlabs/buildenv:latest"
-  commands:
-  - "make build-python-client"
-  - "cp client-py/dist/casperlabs* artifacts/${DRONE_BRANCH}"
-  when:
-    branch:
-    - dev
-    - release-*
-    - master
-    event:
-    - push
-  depends_on:
-    - package-ee
-
 - name: rsync-artifacts
   image: drillster/drone-rsync
   settings:
@@ -773,7 +720,6 @@ steps:
   depends_on:
   - package-sbt-artifacts-merge
   - package-ee
-  - package-python-client
 
 - name: docker-publish
   commands:
@@ -785,26 +731,22 @@ steps:
         REF=${DRONE_BRANCH}
       fi
       docker tag casperlabs/node:DRONE-${DRONE_BUILD_NUMBER} casperlabs/node:"$REF"
-      docker tag casperlabs/client:DRONE-${DRONE_BUILD_NUMBER} casperlabs/client:"$REF"
       docker tag casperlabs/execution-engine:DRONE-${DRONE_BUILD_NUMBER} casperlabs/execution-engine:"$REF"
       docker tag casperlabs/key-generator:DRONE-${DRONE_BUILD_NUMBER} casperlabs/key-generator:"$REF"
       docker tag casperlabs/explorer:DRONE-${DRONE_BUILD_NUMBER} casperlabs/explorer:"$REF"
       docker tag casperlabs/grpcwebproxy:DRONE-${DRONE_BUILD_NUMBER} casperlabs/grpcwebproxy:"$REF"
       docker push casperlabs/node:"$REF"
-      docker push casperlabs/client:"$REF"
       docker push casperlabs/execution-engine:"$REF"
       docker push casperlabs/key-generator:"$REF"
       docker push casperlabs/explorer:"$REF"
       docker push casperlabs/grpcwebproxy:"$REF"
       if [ "${DRONE_BRANCH}" = "master" ]; then
         docker tag casperlabs/node:DRONE-${DRONE_BUILD_NUMBER} casperlabs/node:latest
-        docker tag casperlabs/client:DRONE-${DRONE_BUILD_NUMBER} casperlabs/client:latest
         docker tag casperlabs/execution-engine:DRONE-${DRONE_BUILD_NUMBER} casperlabs/execution-engine:latest
         docker tag casperlabs/key-generator:DRONE-${DRONE_BUILD_NUMBER} casperlabs/key-generator:latest
         docker tag casperlabs/explorer:DRONE-${DRONE_BUILD_NUMBER} casperlabs/explorer:latest
         docker tag casperlabs/grpcwebproxy:DRONE-${DRONE_BUILD_NUMBER} casperlabs/grpcwebproxy:latest
         docker push casperlabs/node:latest
-        docker push casperlabs/client:latest
         docker push casperlabs/execution-engine:latest
         docker push casperlabs/key-generator:latest
         docker push casperlabs/explorer:latest
@@ -967,10 +909,8 @@ steps:
 - name: package-sbt-artifacts-tag
   commands:
   - "make build-client-contracts build-node-contracts"
-  - "sbt update test client/debian:packageBin client/universal:packageZipTarball client/rpm:packageBin node/debian:packageBin node/universal:packageZipTarball node/rpm:packageBin"
+  - "sbt update test node/debian:packageBin node/universal:packageZipTarball node/rpm:packageBin"
   - "mkdir -p artifacts/${DRONE_BRANCH}"
-  - "cp client/target/casperlabs-client_*_all.deb client/target/universal/*.tgz artifacts/${DRONE_BRANCH}"
-  - "cp client/target/rpm/RPMS/noarch/casperlabs-client-*.noarch.rpm artifacts/${DRONE_BRANCH}"
   - "cp node/target/casperlabs-node_*_all.deb node/target/universal/*.tgz artifacts/${DRONE_BRANCH}"
   - "cp node/target/rpm/RPMS/noarch/casperlabs-node-*.noarch.rpm artifacts/${DRONE_BRANCH}"
   environment:
@@ -1002,16 +942,78 @@ steps:
   depends_on:
   - package-sbt-artifacts-tag
 
-- name: package-python-client-tag
+- name: build-docker-tag
   image: "casperlabs/buildenv:latest"
   commands:
-  - "make build-python-client"
-  - "cp client-py/dist/casperlabs* artifacts/${DRONE_BRANCH}"
+  - "export DOCKER_LATEST_TAG=${DRONE_TAG}"
+  - "make docker-build/node"
+  - "make docker-build/execution-engine"
+  - "make docker-build/key-generator"
+  - "make docker-build/explorer"
+  - "make docker-build/grpcwebproxy"
+  volumes:
+  - name: docker_sock
+    path: "/var/run/docker.sock"
   when:
     ref:
     - refs/tags/v*
   depends_on:
     - package-ee-tag
+
+- name: publish-docker-tag
+  image: "casperlabs/buildenv:latest"
+  failure: "ignore"
+  environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
+  volumes:
+  - name: docker_sock
+    path: "/var/run/docker.sock"
+  commands:
+  - |
+      echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+      docker push casperlabs/node:"${DRONE_TAG}"
+      docker push casperlabs/execution-engine:"${DRONE_TAG}"
+      docker push casperlabs/key-generator:"${DRONE_TAG}"
+      docker push casperlabs/explorer:"${DRONE_TAG}"
+      docker push casperlabs/grpcwebproxy:"${DRONE_TAG}"
+  when:
+    ref:
+    - refs/tags/v*
+  depends_on:
+    - build-docker-tag
+
+- name: generate-metapackages
+  commands:
+  - "mkdir -p artifacts/${DRONE_BRANCH}"
+  - "WORKING_DIR=$(pwd)/artifacts/${DRONE_BRANCH}/"
+  - "cd $WORKING_DIR"
+  - "THIS_VERSION=$(ls casperlabs-engine-grpc-server_*_amd64.deb | sed 's/casperlabs-engine-grpc-server_//' | sed 's/_amd64.deb//')"
+  - "THIS_VERSION_MAJOR=$(echo $THIS_VERSION | cut -d '.' -f 1)"
+  - "THIS_VERSION_MINOR=$(echo $THIS_VERSION | cut -d '.' -f 2,3)"
+  - "cd /opt/bintray/artifacts"
+  - "echo $THIS_VERSION"
+  - "echo $THIS_VERSION_MINOR"
+  - "echo $THIS_VERSION_MAJOR"
+  - "sed -i 's/THIS_VERSION_MAJOR/'$THIS_VERSION_MAJOR'/g' rpmbuild/SPECS/casperlabs-all.spec"
+  - "sed -i 's/THIS_VERSION_MINOR/'$THIS_VERSION_MINOR'/g' rpmbuild/SPECS/casperlabs-all.spec"
+  - "sed -i 's/THIS_VERSION/'$THIS_VERSION'/g' rpmbuild/SPECS/casperlabs-all.spec"
+  - "rpmbuild -bb rpmbuild/SPECS/casperlabs-all.spec -D '_topdir '$(pwd)'/rpmbuild' -D 'SRC '$(pwd)"
+  - "sed -i 's/THIS_VERSION/'$THIS_VERSION'/g' /opt/bintray/artifacts/deb_build/casperlabs-all.cfg"
+  - "equivs-build  deb_build/casperlabs-all.cfg"
+  - "cp /opt/bintray/artifacts/casperlabs_*_all.deb $WORKING_DIR/"
+  - "cp /opt/bintray/artifacts/rpmbuild/RPMS/x86_64/casperlabs-*.rpm $WORKING_DIR/"
+  image: "casperlabs/buildenv:latest"
+  volumes:
+  - name: docker_sock
+    path: "/var/run/docker.sock"
+  when:
+    ref:
+    - refs/tags/v*
+  depends_on:
+  - package-ee-tag
 
 - name: github_publish_release_artifacts
   settings:
@@ -1029,21 +1031,47 @@ steps:
     ref:
     - refs/tags/v*
   depends_on:
-  - package-sbt-artifacts-tag
-  - package-ee-tag
-  - package-python-client-tag
+  - generate-metapackages
 
-- name: pypi-publish
-  image: tvasile1012/pypi:latest
+- name: bintray-publish
+  image: "casperlabs/buildenv:latest"
   failure: "ignore"
-  settings:
-    username:
-      from_secret: pypi_user
-    password:
-      from_secret: pypi_pass
-    setupfile: "client-py/setup.py"
-    dist_dir: "client-py/dist/"
-    skip_build: true
+  script: |
+    set -ex
+    API_URL="https://api.bintray.com"
+    UPLOAD_DIR=$(pwd)/artifacts/${DRONE_BRANCH}
+    cd $UPLOAD_DIR
+    echo "Uploading file to bintray:${DRONE_TAG} ..."
+    echo -e "\nDEBIAN" && find . -maxdepth 1 -type f -iregex ".*\\.deb" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/casperlabs/debian/CasperLabs/${DRONE_TAG}/{} && echo"
+    echo -e "\nRPMS" && find . -maxdepth 1 -type f -iregex ".*\\.rpm" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/casperlabs/rpm/CasperLabs/${DRONE_TAG}/{} && echo"
+    # sleep 10 && echo -e "\nPublishing CL Packages on bintray..."
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/casperlabs/debian/CasperLabs/${DRONE_TAG}/publish
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/casperlabs/rpm/CasperLabs/${DRONE_TAG}/publish
+    # sleep 10 && echo -e "\nGPG Signing CL Packages on bintray..."
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/gpg/casperlabs/debian/CasperLabs/versions/${DRONE_TAG}
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/gpg/casperlabs/rpm/CasperLabs/versions/${DRONE_TAG}
+    # sleep 10 && echo -e "\nPublishing GPG Signatures on bintray..."
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/casperlabs/debian/CasperLabs/${DRONE_TAG}/publish
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/casperlabs/rpm/CasperLabs/${DRONE_TAG}/publish
+    # sleep 10 && echo -e "\nCalculating repo metadata on bintray..."
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/calc_metadata/casperlabs/debian/CasperLabs/${DRONE_TAG}
+    # curl -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" --data '{"private_key": "'$BINTRAY_PK'", "passphrase": "'$BINTRAY_GPG_PASSPHRASE'"}' $API_URL/calc_metadata/casperlabs/rpm/CasperLabs/${DRONE_TAG}
+    TEMP_DEB_FILE=uploaded_contents_debian_${GIT_TAG}.json
+    curl -s -X GET -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" $API_URL/packages/casperlabs/debian/CasperLabs/files?include_unpublished=1 > $TEMP_DEB_FILE.json
+    cat $TEMP_DEB_FILE.json | jq -r '.[] | select (.version == "'${GIT_TAG}'") | .path'
+    echo -e "\n\nUploaded files in [ $SUBJECT/$RPM_REPO/$PACKAGE_NAME/$GIT_TAG ]:"
+    TEMP_RPM_FILE=uploaded_contents_rpm_${GIT_TAG}.json
+    curl -s -X GET -u$BINTRAY_USER:$BINTRAY_API_KEY -H "Content-Type: application/json" $API_URL/packages/casperlabs/rpm/CasperLabs/files?include_unpublished=1 > $TEMP_RPM_FILE.json
+    cat $TEMP_RPM_FILE.json | jq -r '.[] | select (.version == "'${GIT_TAG}'") | .path'
+  environment:
+    BINTRAY_USER:
+      from_secret: bintray_username
+    BINTRAY_API_KEY:
+      from_secret: bintray_api_key
+    BINTRAY_GPG_PASSPHRASE:
+      from_secret: bintray_gpg_passphrase
+    BINTRAY_PK:
+      from_secret: bintray_private_key
   when:
     ref:
     - refs/tags/v*

@@ -10,7 +10,6 @@ import requests
 
 from casperlabs_local_net.common import MAX_PAYMENT_ABI, Contract, EMPTY_ETC_CASPERLABS
 from casperlabs_local_net.docker_base import LoggingDockerBase
-from casperlabs_local_net.docker_client import DockerClient
 from casperlabs_local_net.python_client import PythonClient
 from casperlabs_local_net.errors import CasperLabsNodeAddressNotFoundError
 from casperlabs_local_net.docker_base import DockerConfig
@@ -55,14 +54,10 @@ class DockerNode(LoggingDockerBase):
     HTTP_PORT = 40403
     KADEMLIA_PORT = 40404
 
-    DOCKER_CLIENT = "d"
-    PYTHON_CLIENT = "p"
-
     def __init__(self, cl_network, config: DockerConfig):
         self.cl_network = cl_network
         self.config = config
         self.p_client = PythonClient(self)
-        self.d_client = DockerClient(self)
         super().__init__(config)
         self.graphql = GraphQL(self)
 
@@ -74,7 +69,7 @@ class DockerNode(LoggingDockerBase):
             self.server_key_path = config.tls_key_local_path()
             self.set_proxy_server()
             self.set_kademlia_proxy()
-        self._client = self.DOCKER_CLIENT
+        self._client = self.p_client
         self.join_client_network()
 
     def set_proxy_server(self, interceptor_class=GossipInterceptor):
@@ -194,16 +189,11 @@ class DockerNode(LoggingDockerBase):
         return "node"
 
     @property
-    def client(self) -> Union[DockerClient, PythonClient]:
-        return {self.DOCKER_CLIENT: self.d_client, self.PYTHON_CLIENT: self.p_client}[
-            self._client
-        ]
+    def client(self) -> PythonClient:
+        return self.p_client
 
     def use_python_client(self):
         self._client = self.PYTHON_CLIENT
-
-    def use_docker_client(self):
-        self._client = self.DOCKER_CLIENT
 
     @property
     def client_network_name(self) -> str:
@@ -327,14 +317,14 @@ class DockerNode(LoggingDockerBase):
             # this way of creating accounts work. But the accounts could be just
             # created this way, without having to do a transfer.
             f.write(
-                f"{GENESIS_ACCOUNT.public_key_hex},{self.cl_network.initial_motes},0\n"
+                f"{GENESIS_ACCOUNT.public_key_hex},ed25519,{self.cl_network.initial_motes},0\n"
             )
             for i, pair in enumerate(
                 Account(i)
                 for i in range(FIRST_VALIDATOR_ACCOUNT, FIRST_VALIDATOR_ACCOUNT + N)
             ):
                 bond = bond_amount(i, N)
-                f.write(f"{pair.public_key_hex},0,{bond}\n")
+                f.write(f"{pair.public_key_hex},ed25519,0,{bond}\n")
 
     def cleanup(self):
         super().cleanup()

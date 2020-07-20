@@ -11,7 +11,7 @@ import io.casperlabs.casper.consensus.Block.ProcessedDeploy
 import io.casperlabs.casper.consensus.info.DeployInfo
 import io.casperlabs.casper.consensus.info.DeployInfo.ProcessingResult
 import io.casperlabs.casper.consensus.{Block, Deploy, DeploySummary}
-import io.casperlabs.crypto.Keys.PublicKeyBS
+import io.casperlabs.crypto.Keys.PublicKeyHashBS
 import io.casperlabs.metrics.Metrics
 import io.casperlabs.metrics.Metrics.Source
 import io.casperlabs.shared.Time
@@ -78,7 +78,7 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
           pd =>
             (
               pd.getDeploy.deployHash,
-              pd.getDeploy.getHeader.accountPublicKey,
+              pd.getDeploy.getHeader.accountPublicKeyHash,
               pd.getDeploy.getHeader.timestamp,
               pd.getDeploy.clearBody.toByteString,
               pd.getDeploy.getBody.toByteString
@@ -109,7 +109,7 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
                 block.blockHash,
                 pd.getDeploy.deployHash,
                 deployPosition,
-                pd.getDeploy.getHeader.accountPublicKey,
+                pd.getDeploy.getHeader.accountPublicKeyHash,
                 pd.getDeploy.getHeader.timestamp,
                 block.getHeader.timestamp,
                 pd.cost,
@@ -137,7 +137,7 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
       ).updateMany(deploys.map { d =>
         (
           d.deployHash,
-          d.getHeader.accountPublicKey,
+          d.getHeader.accountPublicKeyHash,
           d.getHeader.timestamp,
           d.clearBody.toByteString,
           d.getBody.toByteString
@@ -151,7 +151,7 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
             (
               d.deployHash,
               status,
-              d.getHeader.accountPublicKey,
+              d.getHeader.accountPublicKeyHash,
               currentTimeEpochMillis,
               currentTimeEpochMillis,
               d.clearBody.toByteString,
@@ -348,10 +348,10 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
         .to[List]
         .transact(readXa)
 
-    override def readProcessedByAccount(account: ByteString): F[List[Deploy]] =
+    override def readProcessedByAccount(account: PublicKeyHashBS): F[List[Deploy]] =
       readByAccountAndStatus(account, ProcessedStatusCode)
 
-    private def readByAccountAndStatus(account: ByteString, status: Int): F[List[Deploy]] =
+    private def readByAccountAndStatus(account: PublicKeyHashBS, status: Int): F[List[Deploy]] =
       (fr"SELECT summary, " ++ bodyCol() ++ fr"""
           FROM buffered_deploys
           WHERE account=$account AND status=$status""")
@@ -491,7 +491,7 @@ class SQLiteDeployStorage[F[_]: Time: Sync](
       }
 
     override def getDeploysByAccount(
-        account: PublicKeyBS,
+        account: PublicKeyHashBS,
         limit: Int,
         lastTimeStamp: Long,
         lastDeployHash: DeployHash,

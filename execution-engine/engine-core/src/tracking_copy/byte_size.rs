@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, mem};
 
-use engine_shared::{account::Account, contract::Contract, stored_value::StoredValue};
-use types::Key;
+use engine_shared::{account::Account, stored_value::StoredValue};
+use types::{bytesrepr::ToBytes, ContractWasm, Key};
 
 /// Returns byte size of the element - both heap size and stack size.
 pub trait ByteSize {
@@ -20,12 +20,9 @@ impl ByteSize for Account {
     }
 }
 
-impl ByteSize for Contract {
+impl ByteSize for ContractWasm {
     fn byte_size(&self) -> usize {
-        mem::size_of::<Self>()
-            + self.heap_size()
-            + self.named_keys().byte_size()
-            + self.bytes().len()
+        mem::size_of::<Self>() + self.heap_size()
     }
 }
 
@@ -49,7 +46,11 @@ impl ByteSize for StoredValue {
             + match self {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
                 StoredValue::Account(account) => account.heap_size(),
-                StoredValue::Contract(contract) => contract.heap_size(),
+                StoredValue::ContractWasm(contract_wasm) => contract_wasm.heap_size(),
+                StoredValue::Contract(contract_header) => contract_header.serialized_length(),
+                StoredValue::ContractPackage(contract_package) => {
+                    contract_package.serialized_length()
+                }
             }
     }
 }
@@ -74,9 +75,9 @@ impl HeapSizeOf for Account {
 }
 
 // TODO: contract has other fields (re protocol version) that are not repr here...on purpose?
-impl HeapSizeOf for Contract {
+impl HeapSizeOf for ContractWasm {
     fn heap_size(&self) -> usize {
-        self.named_keys().heap_size() + self.bytes().len()
+        self.bytes().len()
     }
 }
 
@@ -105,9 +106,8 @@ impl HeapSizeOf for String {
 mod tests {
     use std::{collections::BTreeMap, mem};
 
-    use types::Key;
-
     use super::ByteSize;
+    use types::Key;
 
     fn assert_byte_size<T: ByteSize>(el: T, expected: usize) {
         assert_eq!(el.byte_size(), expected)

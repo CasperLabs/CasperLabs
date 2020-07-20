@@ -2,10 +2,13 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::PublicKey, ApiError, U512};
+use types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const FAUCET_CONTRACT: &str = "faucet.wasm";
-const NEW_ACCOUNT_ADDR: PublicKey = PublicKey::ed25519_from([99u8; 32]);
+const NEW_ACCOUNT_ADDR: AccountHash = AccountHash::new([99u8; 32]);
+
+const ARG_TARGET: &str = "target";
+const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
 #[test]
@@ -14,7 +17,7 @@ fn should_get_funds_from_faucet() {
     let exec_request = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         FAUCET_CONTRACT,
-        (NEW_ACCOUNT_ADDR, amount),
+        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )
     .build();
 
@@ -44,13 +47,13 @@ fn should_fail_if_already_funded() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         FAUCET_CONTRACT,
-        (NEW_ACCOUNT_ADDR, amount),
+        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         FAUCET_CONTRACT,
-        (NEW_ACCOUNT_ADDR, amount),
+        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )
     .build();
 

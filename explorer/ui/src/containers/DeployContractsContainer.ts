@@ -1,23 +1,38 @@
 import { action, observable } from 'mobx';
 
 import ErrorContainer from './ErrorContainer';
-import { CasperService, decodeBase16, DeployUtil, encodeBase16 } from 'casperlabs-sdk';
+import {
+  CasperService,
+  decodeBase16,
+  DeployUtil,
+  encodeBase16,
+  Signer
+} from 'casperlabs-sdk';
 import { FieldState, FormState } from 'formstate';
-import { numberGreaterThan, validateBase16, validateInt, valueRequired } from '../lib/FormsValidator';
+import {
+  numberGreaterThan,
+  validateBase16,
+  validateInt,
+  valueRequired
+} from '../lib/FormsValidator';
 import validator from 'validator';
 import $ from 'jquery';
 import { Deploy } from 'casperlabs-grpc/io/casperlabs/casper/consensus/consensus_pb';
-import { CLType, CLValueInstance, Key } from 'casperlabs-grpc/io/casperlabs/casper/consensus/state_pb';
+import {
+  CLType,
+  CLValueInstance,
+  Key
+} from 'casperlabs-grpc/io/casperlabs/casper/consensus/state_pb';
 import { decodeBase64 } from 'tweetnacl-ts';
 import JSBI from 'jsbi';
+import { publicKeyHashForEd25519 } from './AuthContainer';
 
 type SupportedType = CLType.SimpleMap[keyof CLType.SimpleMap] | 'Bytes';
 
 export enum KeyType {
   ADDRESS = 'Address',
   HASH = 'Hash',
-  UREF = 'URef',
-  LOCAL = 'Local'
+  UREF = 'URef'
 }
 
 export enum BitWidth {
@@ -43,7 +58,6 @@ const numberLimitForSigned = (bit: number) => {
     max: JSBI.subtract(powerOf2(bit - 1), JSBI.BigInt(1))
   };
 };
-
 
 const NumberLimit = {
   [CLType.Simple.U8]: numberLimitForUnsigned(8),
@@ -73,6 +87,8 @@ type FormDeployArguments = FormState<FormDeployArgument[]>;
 export type DeployConfiguration = {
   contractType: FieldState<DeployUtil.ContractType | null>,
   contractHash: FieldState<string>,
+  contractName: FieldState<string>,
+  entryPoint: FieldState<string>,
   paymentAmount: FieldState<number>,
   fromAddress: FieldState<string>
 }
@@ -106,22 +122,30 @@ export class DeployContractsContainer {
       numberGreaterThan(0),
       validateInt
     ),
-    fromAddress: new FieldState<string>('')
+    fromAddress: new FieldState<string>(''),
+    contractName: new FieldState<string>('') ,
+    entryPoint: new FieldState<string>('call'),
   }).compose().validators(deployConfiguration => {
     if (deployConfiguration.contractType.$ === DeployUtil.ContractType.Hash) {
       let value = deployConfiguration.contractHash.value;
-      let v = validateBase16(value) || valueRequired(value);
+      let v = validateBase16(value) || valueRequired(value) || valueRequired(deployConfiguration.entryPoint.value);
       if (v !== false) {
         deployConfiguration.contractHash.setError(v);
       }
       return v;
-    } else {
+    } else if (deployConfiguration.contractType.$ === DeployUtil.ContractType.WASM) {
       // WASM
       if (!this.selectedFile) {
         const msg = 'Upload WASM file firstly';
         alert(msg);
         return msg;
       }
+    } else if (deployConfiguration.contractType.$ === DeployUtil.ContractType.Name){
+      let v = valueRequired(deployConfiguration.contractName.value) || valueRequired(deployConfiguration.entryPoint.value);
+      if (v !== false) {
+        deployConfiguration.contractHash.setError(v);
+      }
+      return v;
     }
     return false;
   });
@@ -220,7 +244,6 @@ export class DeployContractsContainer {
     }
   }
 
-
   @action.bound
   async openSignModal() {
     let v1 = await this.deployConfiguration.validate();
@@ -242,16 +265,17 @@ export class DeployContractsContainer {
   @action.bound
   async _onSubmit() {
     this.deployedHash = null;
-    if (!window.casperlabsHelper?.isConnected()) {
+    if (!Signer.isConnected()) {
       throw new Error('Please install the CasperLabs Sign Helper Plugin first!');
     }
 
-    const publicKeyBase64 = await window.casperlabsHelper!.getSelectedPublicKeyBase64();
+    const publicKeyBase64 = await Signer.getSelectedPublicKeyBase64();
     if (!publicKeyBase64) {
       throw new Error('Please create an account in the Plugin first!');
     }
-    const publicKey = decodeBase64(publicKeyBase64);
-    let deploy = await this.makeDeploy(publicKey);
+    // Todo: (ECO-441) make Signer return publicKeyHash directly
+    const publicKeyHash = publicKeyHashForEd25519(publicKeyBase64);
+    let deploy = await this.makeDeploy(publicKeyHash);
     if (!deploy) {
       return false;
     }
@@ -259,9 +283,13 @@ export class DeployContractsContainer {
     this.signing = true;
     let sigBase64;
     try {
-      sigBase64 = await window.casperlabsHelper!.sign(encodeBase16(deploy!.getDeployHash_asU8()));
+      sigBase64 = await Signer.sign(encodeBase16(deploy!.getDeployHash_asU8()));
       this.signing = false;
-      let signedDeploy = DeployUtil.setSignature(deploy, decodeBase64(sigBase64), publicKey);
+      let signedDeploy = DeployUtil.setSignature(
+        deploy,
+        decodeBase64(sigBase64),
+        decodeBase64(publicKeyBase64)
+      );
       await this.casperService.deploy(signedDeploy);
       ($(`#${this.accordionId}`) as any).collapse('hide');
       this.deployedHash = encodeBase16(signedDeploy.getDeployHash_asU8());
@@ -272,7 +300,7 @@ export class DeployContractsContainer {
     }
   }
 
-  private async makeDeploy(publicKey: Uint8Array): Promise<Deploy | null> {
+  private async makeDeploy(publicKeyHash: Uint8Array): Promise<Deploy | null> {
     let deployConfigurationForm = await this.deployConfiguration.validate();
     let deployArguments = await this.deployArguments.validate();
     if (deployConfigurationForm.hasError || deployArguments.hasError) {
@@ -281,20 +309,26 @@ export class DeployContractsContainer {
       const config = deployConfigurationForm.value;
       const args = deployArguments.value;
       let type: DeployUtil.ContractType;
-      let session: ByteArray;
-      if (config.contractType.value === DeployUtil.ContractType.Hash) {
-        type = DeployUtil.ContractType.Hash;
-        session = decodeBase16(config.contractHash.value);
-      } else {
-        type = DeployUtil.ContractType.WASM;
-        session = this.selectedFileContent!;
-      }
+      let session: ByteArray | string;
+
       let argsProto = args.map((arg: FormState<DeployArgument>) => {
         return this.buildArgument(arg);
       });
-      const paymentAmount = config.paymentAmount.value;
+      const paymentAmount = JSBI.BigInt(config.paymentAmount.value);
 
-      return DeployUtil.makeDeploy(argsProto, type, session, null, JSBI.BigInt(paymentAmount), publicKey);
+      if (config.contractType.value === DeployUtil.ContractType.WASM) {
+        session = this.selectedFileContent!;
+        return DeployUtil.makeDeploy(argsProto, DeployUtil.ContractType.WASM, session, null, paymentAmount, publicKeyHash);
+      } else if (config.contractType.value === DeployUtil.ContractType.Hash){
+        session = decodeBase16(config.contractHash.value);
+        const entryPoint = config.entryPoint.value;
+        return DeployUtil.makeDeploy(argsProto, DeployUtil.ContractType.Hash, session, null, paymentAmount, publicKeyHash, [], entryPoint);
+      } else if (config.contractType.value === DeployUtil.ContractType.Name){
+        session = config.contractName.value;
+        const entryPoint = config.entryPoint.value;
+        return DeployUtil.makeDeploy(argsProto, DeployUtil.ContractType.Name, session, null, paymentAmount, publicKeyHash, [], entryPoint);
+      }
+      return Promise.resolve(null);
     }
   }
 
@@ -395,11 +429,6 @@ export class DeployContractsContainer {
             uRef.setUref(valueInByteArray);
             uRef.setAccessRights(arg.$.URefAccessRight.value!);
             key.setUref(uRef);
-            break;
-          case KeyType.LOCAL:
-            const local = new Key.Local();
-            local.setHash(valueInByteArray);
-            key.setLocal(local);
             break;
         }
         value.setKey(key);

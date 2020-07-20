@@ -2,7 +2,7 @@ import * as externals from "./externals";
 import {arrayToTyped} from "./utils";
 import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
-import {PublicKey, PUBLIC_KEY_ED25519_ID} from "./key";
+import {AccountHash} from "./key";
 
 /**
  * Enum representing the possible results of adding an associated key to an account.
@@ -114,14 +114,14 @@ export enum ActionType {
  * Adds an associated key to the account. Associated keys are the keys allowed to sign actions performed
  * in the context of the account.
  *
- * @param publicKey The public key to be added as the associated key.
+ * @param AccountHash The public key to be added as the associated key.
  * @param weight The weight that will be assigned to the new associated key. See [[setActionThreshold]]
  *    for more info about weights.
  * @returns An instance of [[AddKeyFailure]] representing the result.
  */
-export function addAssociatedKey(publicKey: PublicKey, weight: i32): AddKeyFailure {
-    const publicKeyBytes = publicKey.toBytes();
-    const ret = externals.add_associated_key(publicKeyBytes.dataStart, publicKeyBytes.length, weight);
+export function addAssociatedKey(accountHash: AccountHash, weight: i32): AddKeyFailure {
+    const accountHashBytes = accountHash.toBytes();
+    const ret = externals.add_associated_key(accountHashBytes.dataStart, accountHashBytes.length, weight);
     return <AddKeyFailure>ret;
 }
 
@@ -144,13 +144,13 @@ export function setActionThreshold(actionType: ActionType, thresholdValue: u8): 
  * Changes the weight of an existing associated key. See [[addAssociatedKey]] and [[setActionThreshold]]
  * for info about associated keys and their weights.
  *
- * @param publicKey The associated key to be updated.
+ * @param accountHash The associated key to be updated.
  * @param weight The new desired weight of the associated key.
  * @returns An instance of [[UpdateKeyFailure]] representing the result.
  */
-export function updateAssociatedKey(publicKey: PublicKey, weight: i32): UpdateKeyFailure {
-    const publicKeyBytes = publicKey.toBytes();
-    const ret = externals.update_associated_key(publicKeyBytes.dataStart, publicKeyBytes.length, weight);
+export function updateAssociatedKey(accountHash: AccountHash, weight: i32): UpdateKeyFailure {
+    const accountHashBytes = accountHash.toBytes();
+    const ret = externals.update_associated_key(accountHashBytes.dataStart, accountHashBytes.length, weight);
     return <UpdateKeyFailure>ret;
 }
 
@@ -158,12 +158,12 @@ export function updateAssociatedKey(publicKey: PublicKey, weight: i32): UpdateKe
  * Removes the associated key from the account. See [[addAssociatedKey]] for more info about associated
  * keys.
  *
- * @param publicKey The associated key to be removed.
+ * @param accountHash The associated key to be removed.
  * @returns An instance of [[RemoveKeyFailure]] representing the result.
  */
-export function removeAssociatedKey(publicKey: PublicKey): RemoveKeyFailure {
-    const publicKeyBytes = publicKey.toBytes();
-    const ret = externals.remove_associated_key(publicKeyBytes.dataStart, publicKeyBytes.length);
+export function removeAssociatedKey(accountHash: AccountHash): RemoveKeyFailure {
+    const accountHashBytes = accountHash.toBytes();
+    const ret = externals.remove_associated_key(accountHashBytes.dataStart, accountHashBytes.length);
     return <RemoveKeyFailure>ret;
 }
 

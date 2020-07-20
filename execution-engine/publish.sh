@@ -5,11 +5,6 @@ set -eu -o pipefail
 CRATES_URL=https://crates.io/api/v1/crates
 GH_URL=https://api.github.com/repos/CasperLabs/CasperLabs
 EE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-# These are the subdirs of CasperLabs/execution-engine which contain packages for publishing.  They
-# should remain ordered from least-dependent to most.
-#
-# Note: 'cargo-casperlabs' is treated specially since it needs '--allow-dirty' passed to the publish call
-PACKAGE_DIRS=( types contract engine-wasm-prep engine-shared engine-storage engine-core engine-grpc-server engine-test-support )
 
 run_curl() {
     set +e
@@ -22,38 +17,28 @@ run_curl() {
     fi
 }
 
-check_local_repo_is_up_to_date() {
-    run_curl $GH_URL/branches/dev
-    LATEST_GH_COMMIT=$(echo "$CURL_OUTPUT" | python3 -c "import sys, json; print(json.load(sys.stdin)['commit']['sha'])")
-    LOCAL_HEAD=$(git rev-parse HEAD)
-    if [[ $LATEST_GH_COMMIT != $LOCAL_HEAD ]]; then
-        printf "Local HEAD doesn't match the latest commit in 'dev'.  Aborting.\n\n"
-        exit 2
-    fi
-}
-
 check_python_has_toml() {
     set +e
     python3 -c "import toml" 2>/dev/null
-    set -e
     if [[ $? -ne 0 ]]; then
         printf "Ensure you have 'toml' installed for Python3\n"
         printf "e.g. run\n"
-        printf "    pip install toml --user\n\n"
+        printf "    pip3 install toml --user\n\n"
         exit 3
     fi
+    set -e
 }
 
-version_in_dev() {
+local_version() {
     local DIR_IN_EE="$1"
-    printf "Version of crate '%s' from dev branch: " "$DIR_IN_EE"
-    DEV_VERSION=$(cat "$EE_DIR/$DIR_IN_EE/Cargo.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['package']['version'])")
-    printf "%s\n" $DEV_VERSION
+    printf "Local version:         "
+    LOCAL_VERSION=$(cat "$EE_DIR/$DIR_IN_EE/Cargo.toml" | python3 -c "import sys, toml; print(toml.load(sys.stdin)['package']['version'])")
+    printf "%s\n" $LOCAL_VERSION
 }
 
 max_version_in_crates_io() {
     local CRATE=$1
-    printf "Max version of published crate '%s': " $CRATE
+    printf "Max published version: "
     run_curl $CRATES_URL/$CRATE
     if [[ "$CURL_OUTPUT" == "{\"errors\":[{\"detail\":\"Not Found\"}]}" ]]; then
         CRATES_IO_VERSION="N/A (not found in crates.io)"
@@ -65,28 +50,42 @@ max_version_in_crates_io() {
 
 publish() {
     local DIR_IN_EE="$1"
-    version_in_dev "$DIR_IN_EE"
-
     local CRATE_NAME=$(cat $EE_DIR/$DIR_IN_EE/Cargo.toml | python3 -c "import sys, toml; print(toml.load(sys.stdin)['package']['name'])")
+    printf "%s\n" $CRATE_NAME
+
     max_version_in_crates_io $CRATE_NAME
 
-    if [[ "$DEV_VERSION" == "$CRATES_IO_VERSION" ]]; then
-        printf "Skipping '%s'\n" $CRATE_NAME
+    local_version "$DIR_IN_EE"
+
+    if [[ "$LOCAL_VERSION" == "$CRATES_IO_VERSION" ]]; then
+        printf "Skipping\n"
     else
-        printf "Publishing '%s'\n" $CRATE_NAME
-        pushd $EE_DIR/$DIR_IN_EE
-        cargo publish
-        popd
-        printf "Published '%s' at version %s\n" $CRATE_NAME $DEV_VERSION
+        printf "Publishing...\n"
+        pushd $EE_DIR/$DIR_IN_EE >/dev/null
+        set +u
+        cargo publish $2
+        set -u
+        popd >/dev/null
+        printf "Published version %s\n" $LOCAL_VERSION
+        printf "Sleeping for 60 seconds...\n"
+        sleep 60
     fi
     printf "================================================================================\n\n"
 }
 
-# check_local_repo_is_up_to_date
 check_python_has_toml
 
-for PACKAGE_DIR in "${PACKAGE_DIRS[@]}"; do
-    publish $PACKAGE_DIR
-done
-
+# These are the subdirs of CasperLabs/execution-engine which contain packages for publishing.  They should remain
+# ordered from least-dependent to most.
+publish types
+publish contract
+publish engine-wasm-prep
+publish mint
+publish proof-of-stake
+publish standard-payment
+publish engine-shared
+publish engine-storage
+publish engine-core --allow-dirty
+publish engine-grpc-server
+publish engine-test-support
 publish cargo-casperlabs --allow-dirty

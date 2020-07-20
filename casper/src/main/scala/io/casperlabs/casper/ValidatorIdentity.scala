@@ -18,16 +18,40 @@ import scala.language.higherKinds
 final case class ValidatorIdentity(
     publicKey: Keys.PublicKey,
     privateKey: Keys.PrivateKey,
-    signatureAlgorithm: SignatureAlgorithm
+    signatureAlgorithm: SignatureAlgorithm,
+    publicKeyHash: Keys.PublicKeyHash
 ) {
   def signature(data: Array[Byte]): Signature =
     Signature(
       signatureAlgorithm.name,
       ByteString.copyFrom(signatureAlgorithm.sign(data, privateKey))
     )
+
+  val publicKeyBS: Keys.PublicKeyBS =
+    Keys.PublicKey(ByteString.copyFrom(publicKey))
+
+  val publicKeyHashBS: Keys.PublicKeyHashBS =
+    Keys.PublicKeyHash(ByteString.copyFrom(publicKeyHash))
 }
 
 object ValidatorIdentity {
+  def apply(
+      publicKey: Keys.PublicKey,
+      privateKey: Keys.PrivateKey,
+      signatureAlgorithm: SignatureAlgorithm
+  ): ValidatorIdentity = ValidatorIdentity(
+    publicKey,
+    privateKey,
+    signatureAlgorithm,
+    publicKeyHash = signatureAlgorithm.publicKeyHash(publicKey)
+  )
+
+  val empty = ValidatorIdentity(
+    Keys.PublicKey(Array.empty[Byte]),
+    Keys.PrivateKey(Array.empty[Byte]),
+    SignatureAlgorithm.Ed25519
+  )
+
   private def fileContent[F[_]: Sync](path: Path): F[String] =
     Resource
       .fromAutoCloseable(Sync[F].delay(Source.fromFile(path.toFile)))

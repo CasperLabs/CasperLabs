@@ -17,8 +17,7 @@ enum CustomError {
     UnableToReadMutatedLocalKey = 2,
 }
 
-#[no_mangle]
-pub extern "C" fn delegate() {
+pub fn delegate() {
     local_state::delegate();
     // read from local state
     let mut res: String = storage::read_local(&local_state::LOCAL_KEY)
@@ -43,13 +42,4 @@ pub extern "C" fn delegate() {
         !res.is_empty(),
         "local value should be accessible post upgrade"
     )
-}
-
-pub fn install() {
-    let key = storage::store_function(ENTRY_FUNCTION_NAME, Default::default())
-        .into_uref()
-        .unwrap_or_revert_with(ApiError::UnexpectedContractRefVariant)
-        .into();
-
-    contract::contract_api::runtime::put_key(CONTRACT_NAME, key);
 }

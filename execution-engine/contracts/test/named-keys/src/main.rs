@@ -25,12 +25,11 @@ const COMMAND_TEST_READ_UREF1: &str = "test-read-uref1";
 const COMMAND_TEST_READ_UREF2: &str = "test-read-uref2";
 const COMMAND_INCREASE_UREF2: &str = "increase-uref2";
 const COMMAND_OVERWRITE_UREF2: &str = "overwrite-uref2";
+const ARG_COMMAND: &str = "command";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let command: String = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let command: String = runtime::get_named_arg(ARG_COMMAND);
 
     match command.as_str() {
         COMMAND_CREATE_UREF1 => create_uref("hello-world", String::from("Hello, world!")),

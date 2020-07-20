@@ -133,7 +133,7 @@ class SynchronizerSpec
         val target    = dag.last.blockHash
         val ancestors = collectAncestors(Set(target), target)
         val bonds =
-          dag.map(_.validatorPublicKey).distinct.map(Bond(_).withStake(state.BigInt("1", 512)))
+          dag.map(_.validatorPublicKeyHash).distinct.map(Bond(_).withStake(state.BigInt("1", 512)))
         val subdag = dag.filter(x => ancestors(x.blockHash)).map { summary =>
           summary
             .withHeader(summary.getHeader.withState(summary.state.withBonds(bonds)))

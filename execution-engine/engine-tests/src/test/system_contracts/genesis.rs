@@ -8,14 +8,14 @@ use engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, DEFAULT_WASM_COSTS, MINT_INSTALL_CONTRACT,
     POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
-use types::{account::PublicKey, Key, ProtocolVersion, U512};
+use types::{account::AccountHash, ProtocolVersion, U512};
 
 #[cfg(feature = "use-system-contracts")]
 const BAD_INSTALL: &str = "standard_payment.wasm";
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
-const ACCOUNT_1_ADDR: PublicKey = PublicKey::ed25519_from([1u8; 32]);
-const ACCOUNT_2_ADDR: PublicKey = PublicKey::ed25519_from([2u8; 32]);
+const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
+const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;
 const ACCOUNT_2_BONDED_AMOUNT: u64 = 2_000_000;
 const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
@@ -26,10 +26,10 @@ const ACCOUNT_2_BALANCE: u64 = 2_000_000_000;
 fn should_run_genesis() {
     let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
     let account_1 = {
-        let account_1_public_key = ACCOUNT_1_ADDR;
+        let account_1_account_hash = ACCOUNT_1_ADDR;
         let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
         GenesisAccount::new(
-            account_1_public_key,
+            account_1_account_hash,
             account_1_balance,
             account_1_bonded_amount,
         )
@@ -37,10 +37,10 @@ fn should_run_genesis() {
 
     let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
     let account_2 = {
-        let account_2_public_key = ACCOUNT_2_ADDR;
+        let account_2_account_hash = ACCOUNT_2_ADDR;
         let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
         GenesisAccount::new(
-            account_2_public_key,
+            account_2_account_hash,
             account_2_balance,
             account_2_bonded_amount,
         )
@@ -88,19 +88,20 @@ fn should_run_genesis() {
     assert_eq!(account_1_balance_actual, account_1_balance.value());
     assert_eq!(account_2_balance_actual, account_2_balance.value());
 
-    let mint_contract_uref = builder.get_mint_contract_uref();
-    let pos_contract_uref = builder.get_pos_contract_uref();
+    let mint_contract_hash = builder.get_mint_contract_hash();
+    let pos_contract_hash = builder.get_pos_contract_hash();
 
-    if let Ok(StoredValue::Contract(_)) = builder.query(None, Key::URef(mint_contract_uref), &[]) {
-        // Contract exists at mint contract URef
+    let result = builder.query(None, mint_contract_hash.into(), &[]);
+    if let Ok(StoredValue::Contract(_)) = result {
+        // Contract exists at mint contract hash
     } else {
-        panic!("contract not found at mint uref");
+        panic!("contract not found at mint hash");
     }
 
-    if let Ok(StoredValue::Contract(_)) = builder.query(None, Key::URef(pos_contract_uref), &[]) {
-        // Contract exists at pos contract URef
+    if let Ok(StoredValue::Contract(_)) = builder.query(None, pos_contract_hash.into(), &[]) {
+        // Contract exists at pos contract hash
     } else {
-        panic!("contract not found at pos uref");
+        panic!("contract not found at pos hash");
     }
 }
 
@@ -111,21 +112,21 @@ fn should_run_genesis() {
 fn should_fail_if_bad_mint_install_contract_is_provided() {
     let run_genesis_request = {
         let account_1 = {
-            let account_1_public_key = ACCOUNT_1_ADDR;
+            let account_1_account_hash = ACCOUNT_1_ADDR;
             let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
             let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
             GenesisAccount::new(
-                account_1_public_key,
+                account_1_account_hash,
                 account_1_balance,
                 account_1_bonded_amount,
             )
         };
         let account_2 = {
-            let account_2_public_key = ACCOUNT_2_ADDR;
+            let account_2_account_hash = ACCOUNT_2_ADDR;
             let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
             let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
             GenesisAccount::new(
-                account_2_public_key,
+                account_2_account_hash,
                 account_2_balance,
                 account_2_bonded_amount,
             )
@@ -160,21 +161,21 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
 fn should_fail_if_bad_pos_install_contract_is_provided() {
     let run_genesis_request = {
         let account_1 = {
-            let account_1_public_key = ACCOUNT_1_ADDR;
+            let account_1_account_hash = ACCOUNT_1_ADDR;
             let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
             let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
             GenesisAccount::new(
-                account_1_public_key,
+                account_1_account_hash,
                 account_1_balance,
                 account_1_bonded_amount,
             )
         };
         let account_2 = {
-            let account_2_public_key = ACCOUNT_2_ADDR;
+            let account_2_account_hash = ACCOUNT_2_ADDR;
             let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
             let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
             GenesisAccount::new(
-                account_2_public_key,
+                account_2_account_hash,
                 account_2_balance,
                 account_2_bonded_amount,
             )

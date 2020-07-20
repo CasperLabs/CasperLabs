@@ -13,10 +13,8 @@ import {URef} from "../../../../contract-as/assembly/uref";
 const TRANSFER_RESULT_UREF_NAME = "transfer_result";
 const MAIN_PURSE_FINAL_BALANCE_UREF_NAME = "final_balance";
 
-enum Args{
-    DestinationAccount = 0,
-    Amount = 1,
-}
+const ARG_TARGET = "target";
+const ARG_AMOUNT = "amount";
 
 enum CustomError{
     MissingAmountArg = 1,
@@ -25,18 +23,10 @@ enum CustomError{
     UnableToGetBalance = 103
 }
 
-export function call(): void {
+export function delegate(): void {
     const mainPurse = getMainPurse();
-    const destinationAccountAddrArg = CL.getArg(Args.DestinationAccount);
-    if (destinationAccountAddrArg === null) {
-        Error.fromUserError(<u16>CustomError.MissingDestinationAccountArg).revert();
-        return;
-    }
-    const amountArg = CL.getArg(Args.Amount);
-    if (amountArg === null) {
-        Error.fromUserError(<u16>CustomError.MissingAmountArg).revert();
-        return;
-    }
+    const destinationAccountAddrArg = CL.getNamedArg(ARG_TARGET);
+    const amountArg = CL.getNamedArg(ARG_AMOUNT);
     const amountResult = U512.fromBytes(amountArg);
     if (amountResult.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidAmountArg).revert();
@@ -65,4 +55,8 @@ export function call(): void {
     }
     const key = Key.create(CLValue.fromU512(<U512>maybeBalance));
     putKey(MAIN_PURSE_FINAL_BALANCE_UREF_NAME, <Key>key);
+}
+
+export function call(): void {
+    delegate();
 }

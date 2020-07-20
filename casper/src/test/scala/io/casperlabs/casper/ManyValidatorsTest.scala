@@ -10,6 +10,7 @@ import io.casperlabs.casper.helper.BlockGenerator._
 import io.casperlabs.casper.helper._
 import io.casperlabs.casper.util.BondingUtil.Bond
 import io.casperlabs.catscontrib.MonadThrowable
+import io.casperlabs.crypto.Keys
 import io.casperlabs.shared.Time
 import io.casperlabs.storage.BlockMsgWithTransform
 import monix.eval.Task
@@ -28,16 +29,16 @@ class ManyValidatorsTest extends FlatSpec with Matchers with BlockGenerator with
           ByteString.copyFromUtf8(Random.nextString(20)).substring(0, 32)
         )
         .map(Bond(_, 10))
-      val v1 = bonds.head.validatorPublicKey
+      val v1 = Keys.PublicKeyHash(bonds.head.validatorPublicKeyHash)
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)(
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)(
                     MonadThrowable[Task],
                     Time[Task],
                     storage,
                     storage
                   )
         _ <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds, bonds.map {
-              case Bond(validator, _) => validator -> genesis.blockHash
+              case Bond(validator, _) => Keys.PublicKeyHash(validator) -> genesis.blockHash
             }.toMap)(MonadThrowable[Task], Time[Task], storage, storage)
         dag                 <- storage.getRepresentation
         latestMessageHashes <- dag.latestMessageHashes

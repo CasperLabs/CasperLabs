@@ -2,7 +2,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::result;
 
 use types::{
-    account::PublicKey,
+    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     system_contract_errors::pos::{Error, Result},
     BlockTime, CLType, CLTyped, U512,
@@ -12,7 +12,7 @@ use types::{
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct QueueEntry {
     /// The validator who is bonding or unbonding.
-    pub validator: PublicKey,
+    pub validator: AccountHash,
     /// The amount by which to change the stakes.
     pub amount: U512,
     /// The timestamp when the request was made.
@@ -21,7 +21,7 @@ pub struct QueueEntry {
 
 impl QueueEntry {
     /// Creates a new `QueueEntry` with the current block's timestamp.
-    fn new(validator: PublicKey, amount: U512, timestamp: BlockTime) -> QueueEntry {
+    fn new(validator: AccountHash, amount: U512, timestamp: BlockTime) -> QueueEntry {
         QueueEntry {
             validator,
             amount,
@@ -48,7 +48,7 @@ impl ToBytes for QueueEntry {
 
 impl FromBytes for QueueEntry {
     fn from_bytes(bytes: &[u8]) -> result::Result<(Self, &[u8]), bytesrepr::Error> {
-        let (validator, bytes) = PublicKey::from_bytes(bytes)?;
+        let (validator, bytes) = AccountHash::from_bytes(bytes)?;
         let (amount, bytes) = U512::from_bytes(bytes)?;
         let (timestamp, bytes) = BlockTime::from_bytes(bytes)?;
         let entry = QueueEntry {
@@ -67,14 +67,19 @@ impl CLTyped for QueueEntry {
 }
 
 /// A queue of bonding or unbonding requests, sorted by timestamp in ascending order.
-#[derive(Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Queue(pub Vec<QueueEntry>);
 
 impl Queue {
     /// Pushes a new entry to the end of the queue.
     ///
     /// Returns an error if the validator already has a request in the queue.
-    pub fn push(&mut self, validator: PublicKey, amount: U512, timestamp: BlockTime) -> Result<()> {
+    pub fn push(
+        &mut self,
+        validator: AccountHash,
+        amount: U512,
+        timestamp: BlockTime,
+    ) -> Result<()> {
         if self.0.iter().any(|entry| entry.validator == validator) {
             return Err(Error::MultipleRequests);
         }
@@ -137,7 +142,7 @@ mod tests {
     use alloc::vec;
 
     use types::{
-        account::PublicKey, bytesrepr, system_contract_errors::pos::Error, BlockTime, U512,
+        account::AccountHash, bytesrepr, system_contract_errors::pos::Error, BlockTime, U512,
     };
 
     use super::{Queue, QueueEntry};
@@ -148,9 +153,9 @@ mod tests {
 
     #[test]
     fn test_push() {
-        let val1 = PublicKey::ed25519_from(KEY1);
-        let val2 = PublicKey::ed25519_from(KEY2);
-        let val3 = PublicKey::ed25519_from(KEY3);
+        let val1 = AccountHash::new(KEY1);
+        let val2 = AccountHash::new(KEY2);
+        let val3 = AccountHash::new(KEY3);
         let mut queue: Queue = Default::default();
         assert_eq!(Ok(()), queue.push(val1, U512::from(5), BlockTime::new(100)));
         assert_eq!(Ok(()), queue.push(val2, U512::from(5), BlockTime::new(101)));
@@ -166,9 +171,9 @@ mod tests {
 
     #[test]
     fn test_pop_due() {
-        let val1 = PublicKey::ed25519_from(KEY1);
-        let val2 = PublicKey::ed25519_from(KEY2);
-        let val3 = PublicKey::ed25519_from(KEY3);
+        let val1 = AccountHash::new(KEY1);
+        let val2 = AccountHash::new(KEY2);
+        let val3 = AccountHash::new(KEY3);
         let mut queue: Queue = Default::default();
         assert_eq!(Ok(()), queue.push(val1, U512::from(5), BlockTime::new(100)));
         assert_eq!(Ok(()), queue.push(val2, U512::from(6), BlockTime::new(101)));
@@ -188,9 +193,9 @@ mod tests {
 
     #[test]
     fn serialization_roundtrip() {
-        let val1 = PublicKey::ed25519_from(KEY1);
-        let val2 = PublicKey::ed25519_from(KEY2);
-        let val3 = PublicKey::ed25519_from(KEY3);
+        let val1 = AccountHash::new(KEY1);
+        let val2 = AccountHash::new(KEY2);
+        let val3 = AccountHash::new(KEY3);
         let mut queue: Queue = Default::default();
         queue.push(val1, U512::from(5), BlockTime::new(0)).unwrap();
         queue.push(val2, U512::from(6), BlockTime::new(1)).unwrap();

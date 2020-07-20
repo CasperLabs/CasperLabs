@@ -11,7 +11,7 @@ use engine_shared::{
     transform::{self, Transform},
     TypeMismatch,
 };
-use types::{account::PublicKey, bytesrepr, Key, ProtocolVersion, U512};
+use types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, U512};
 
 use crate::{
     protocol_data::ProtocolData,
@@ -45,7 +45,7 @@ pub enum CommitResult {
     RootNotFound,
     Success {
         state_root: Blake2bHash,
-        bonded_validators: HashMap<PublicKey, U512>,
+        bonded_validators: HashMap<AccountHash, U512>,
     },
     KeyNotFound(Key),
     TypeMismatch(TypeMismatch),

@@ -360,8 +360,8 @@ package object gossiping {
   ): Resource[F, BlockDownloadManager[F]] =
     for {
       _ <- Resource.liftF(BlockDownloadManagerImpl.establishMetrics[F])
-      maybeValidatorPublicKey = maybeValidatorId
-        .map(x => ByteString.copyFrom(x.publicKey))
+      maybeValidatorPublicKeyHash = maybeValidatorId
+        .map(_.publicKeyHashBS)
         .filterNot(_.isEmpty)
       downloadManager <- BlockDownloadManagerImpl[F](
                           maxParallelDownloads = conf.server.downloadMaxParallelBlocks,
@@ -374,16 +374,14 @@ package object gossiping {
 
                             override def validate(block: Block): F[Unit] =
                               isInitialSyncDoneRef.get.flatMap { isInitialSyncDone =>
-                                maybeValidatorPublicKey
-                                  .filter {
-                                    _ == block.getHeader.validatorPublicKey && isInitialSyncDone
-                                  }
-                                  .fold(().pure[F]) { _ =>
-                                    Log[F]
-                                      .warn(
-                                        s"${block -> "message" -> null} seems to be created by a doppelganger using the same validator key!"
-                                      )
-                                  }
+                                Log[F]
+                                  .warn(
+                                    s"${block -> "message" -> null} seems to be created by a doppelganger using the same validator key!"
+                                  )
+                                  .whenA(
+                                    isInitialSyncDone && maybeValidatorPublicKeyHash
+                                      .contains(block.getHeader.validatorPublicKeyHash)
+                                  )
                               } *>
                                 Consensus[F].validateAndAddBlock(block)
 
@@ -435,9 +433,9 @@ package object gossiping {
     for {
       _ <- Resource.liftF {
             maybeValidatorId match {
-              case Some(ValidatorIdentity(publicKey, _, _)) =>
+              case Some(validator) =>
                 Log[F].info(
-                  s"Starting with validator identity ${Base16.encode(publicKey) -> "validator"}"
+                  s"Starting with validator identity ${Base16.encode(validator.publicKeyHash) -> "validator"}"
                 )
               case None =>
                 Log[F].info("Starting without a validator identity.")
@@ -463,9 +461,8 @@ package object gossiping {
       maybeApproveBlock = (block: Block) =>
         maybeValidatorId
           .filter { id =>
-            val publicKey = ByteString.copyFrom(id.publicKey)
             block.getHeader.getState.bonds.exists { bond =>
-              bond.validatorPublicKey == publicKey
+              bond.validatorPublicKeyHash == id.publicKeyHashBS
             }
           }
           .map { id =>

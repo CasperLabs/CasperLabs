@@ -2,15 +2,19 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
+use types::RuntimeArgs;
 
 const CONTRACT_EE_549_REGRESSION: &str = "ee_549_regression.wasm";
 
 #[ignore]
 #[test]
 fn should_run_ee_549_set_refund_regression() {
-    let exec_request =
-        ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, CONTRACT_EE_549_REGRESSION, ())
-            .build();
+    let exec_request = ExecuteRequestBuilder::standard(
+        DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_EE_549_REGRESSION,
+        RuntimeArgs::default(),
+    )
+    .build();
 
     let mut builder = InMemoryWasmTestBuilder::default();
 

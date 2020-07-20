@@ -9,35 +9,24 @@ import {getMainPurse} from "../../../../contract-as/assembly/account";
 import {fromBytesString} from "../../../../contract-as/assembly/bytesrepr";
 import {createPurse, transferFromPurseToPurse} from "../../../../contract-as/assembly/purse";
 
-enum Args{
-    DestinationPurseName = 0,
-    Amount = 1
-}
+
+const ARG_AMOUNT = "amount";
+const ARG_DESTINATION = "destination";
 
 enum CustomError{
-    MissingAmountArg = 1,
     InvalidAmountArg = 2,
-    MissingDestinationArg = 3,
     InvalidDestinationArg = 4
 }
 
 export function call(): void {
-    const amountArg = CL.getArg(Args.Amount);
-    if (amountArg === null) {
-        Error.fromUserError(<u16>CustomError.MissingAmountArg).revert();
-        return;
-    }
+    const amountArg = CL.getNamedArg(ARG_AMOUNT);
     const amountResult = U512.fromBytes(amountArg);
     if (amountResult.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidAmountArg).revert();
         return;
     }
     let amount = amountResult.value;
-    const destinationPurseNameArg = CL.getArg(Args.DestinationPurseName);
-    if (destinationPurseNameArg === null) {
-        Error.fromUserError(<u16>CustomError.MissingDestinationArg).revert();
-        return;
-    }
+    const destinationPurseNameArg = CL.getNamedArg(ARG_DESTINATION);
     const destinationPurseNameResult = fromBytesString(destinationPurseNameArg);
     if (destinationPurseNameResult.hasError()) {
         Error.fromUserError(<u16>CustomError.InvalidDestinationArg).revert();

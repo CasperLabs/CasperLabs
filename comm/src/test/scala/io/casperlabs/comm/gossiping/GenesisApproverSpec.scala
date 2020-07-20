@@ -118,7 +118,8 @@ class GenesisApproverSpec extends WordSpecLike with Matchers with ArbitraryConse
         val n = candidate.approvals.size
         // The next validator signs it, so it's a valid signature.
         val a = genesis.getHeader.getState.bonds.drop(n).take(1).map { b =>
-          Approval(b.validatorPublicKey).withSignature(sample(arbitrary[Signature]))
+          val v = getValidatorByHash(b.validatorPublicKeyHash)
+          Approval(v.publicKey).withSignature(sample[Signature].withSigAlgorithm(v.sigAlgorithm))
         }
         candidate = candidate.copy(approvals = candidate.approvals ++ a)
       }
@@ -176,8 +177,7 @@ class GenesisApproverSpec extends WordSpecLike with Matchers with ArbitraryConse
         sample(arbitrary[Approval])
           .withSignature(sample(arbitrary[Signature]).withSigAlgorithm("XXX")),
         // Good one.
-        sample(arbitrary[Approval])
-          .withApproverPublicKey(genesis.getHeader.getState.bonds.head.validatorPublicKey)
+        sampleApprovalFromValidator(genesis.getHeader.getState.bonds.head.validatorPublicKeyHash)
       )
       TestFixture.fromBootstrap(
         remoteCandidate = () =>
@@ -356,7 +356,7 @@ class GenesisApproverSpec extends WordSpecLike with Matchers with ArbitraryConse
           r2 <- approver.addApproval(
                  genesis.blockHash,
                  correctApproval.withApproverPublicKey(
-                   genesis.getHeader.getState.bonds(1).validatorPublicKey
+                   getValidatorByHash(genesis.getHeader.getState.bonds(1).validatorPublicKeyHash).publicKey
                  )
                )
         } yield {
@@ -369,7 +369,7 @@ class GenesisApproverSpec extends WordSpecLike with Matchers with ArbitraryConse
     "accumulate approvals arriving in parallel" in {
       TestFixture.fromGenesis() { approver =>
         val approvals = genesis.getHeader.getState.bonds.tail.map { b =>
-          sample(arbitrary[Approval]).withApproverPublicKey(b.validatorPublicKey)
+          sampleApprovalFromValidator(b.validatorPublicKeyHash)
         }
         for {
           _ <- Task.gatherUnordered(approvals.map(approver.addApproval(genesis.blockHash, _)))
@@ -469,14 +469,31 @@ object GenesisApproverSpec extends ArbitraryConsensusAndComm {
 
   val genesis = {
     val block = sample(arbitrary[Block])
-    val bonds = sample(Gen.listOfN(5, arbitrary[Bond]))
+    val bonds = sample(Gen.pick(5, randomValidators)).map { v =>
+      sample[Bond].withValidatorPublicKeyHash(v.publicKeyHash)
+    }
     val state = block.getHeader.getState.withBonds(bonds)
     block.withHeader(block.getHeader.withState(state))
   }
 
+  def getValidatorByHash(validatorPublicKeyHash: ByteString): AccountKeys =
+    randomValidators.find(_.publicKeyHash == validatorPublicKeyHash).get
+
+  def sampleApprovalFromValidator(validatorPublicKeyHash: ByteString): Approval = {
+    val v = getValidatorByHash(validatorPublicKeyHash)
+    Approval()
+      .withApproverPublicKey(v.publicKey)
+      .withSignature(sample[Signature].withSigAlgorithm(v.sigAlgorithm))
+  }
+
   // Example of an approval that we can use in tests that won't be rejected.
-  val correctApproval = sample(arbitrary[Approval])
-    .withApproverPublicKey(genesis.getHeader.getState.bonds.last.validatorPublicKey)
+  val correctApproval: Approval = {
+    val validatorPublicKeyHash = genesis.getHeader.getState.bonds.last.validatorPublicKeyHash
+    val validator              = getValidatorByHash(validatorPublicKeyHash)
+    Approval()
+      .withApproverPublicKey(validator.publicKey)
+      .withSignature(sample[Signature].withSigAlgorithm(validator.sigAlgorithm))
+  }
 
   class MockNodeDiscovery(peers: List[Node]) extends NoOpsNodeDiscovery[Task] {
     override def recentlyAlivePeersAscendingDistance = Task.now(peers)
@@ -584,9 +601,9 @@ object GenesisApproverSpec extends ArbitraryConsensusAndComm {
           connectToGossip = _ => Task.now(gossipService),
           relayFactor,
           genesis,
-          maybeApproval = sample(arbitrary[Approval])
-            .withApproverPublicKey(genesis.getHeader.getState.bonds.head.validatorPublicKey)
-            .some
+          maybeApproval = sampleApprovalFromValidator(
+            genesis.getHeader.getState.bonds.head.validatorPublicKeyHash
+          ).some
             .filter(_ => approve)
         )
         .use(test)

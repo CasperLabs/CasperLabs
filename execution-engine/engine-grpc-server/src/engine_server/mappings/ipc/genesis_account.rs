@@ -2,7 +2,7 @@ use std::convert::{TryFrom, TryInto};
 
 use engine_core::engine_state::genesis::GenesisAccount;
 use engine_shared::motes::Motes;
-use types::account::PublicKey;
+use types::account::AccountHash;
 
 use crate::engine_server::{
     ipc::ChainSpec_GenesisConfig_ExecConfig_GenesisAccount, mappings::MappingError,
@@ -12,7 +12,7 @@ impl From<GenesisAccount> for ChainSpec_GenesisConfig_ExecConfig_GenesisAccount 
     fn from(genesis_account: GenesisAccount) -> Self {
         let mut pb_genesis_account = ChainSpec_GenesisConfig_ExecConfig_GenesisAccount::new();
 
-        pb_genesis_account.set_public_key(genesis_account.public_key().as_bytes().to_vec());
+        pb_genesis_account.public_key_hash = genesis_account.account_hash().as_bytes().to_vec();
         pb_genesis_account.set_balance(genesis_account.balance().value().into());
         pb_genesis_account.set_bonded_amount(genesis_account.bonded_amount().value().into());
 
@@ -26,10 +26,10 @@ impl TryFrom<ChainSpec_GenesisConfig_ExecConfig_GenesisAccount> for GenesisAccou
     fn try_from(
         mut pb_genesis_account: ChainSpec_GenesisConfig_ExecConfig_GenesisAccount,
     ) -> Result<Self, Self::Error> {
-        // TODO: our TryFromSliceForPublicKeyError should convey length info
-        let public_key =
-            PublicKey::ed25519_try_from(pb_genesis_account.get_public_key()).map_err(|_| {
-                MappingError::invalid_public_key_length(pb_genesis_account.public_key.len())
+        // TODO: our TryFromSliceForAccountHashError should convey length info
+        let account_hash = AccountHash::try_from(&pb_genesis_account.public_key_hash as &[u8])
+            .map_err(|_| {
+                MappingError::invalid_account_hash_length(pb_genesis_account.public_key_hash.len())
             })?;
         let balance = pb_genesis_account
             .take_balance()
@@ -39,7 +39,7 @@ impl TryFrom<ChainSpec_GenesisConfig_ExecConfig_GenesisAccount> for GenesisAccou
             .take_bonded_amount()
             .try_into()
             .map(Motes::new)?;
-        Ok(GenesisAccount::new(public_key, balance, bonded_amount))
+        Ok(GenesisAccount::new(account_hash, balance, bonded_amount))
     }
 }
 

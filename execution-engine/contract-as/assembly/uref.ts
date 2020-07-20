@@ -1,6 +1,6 @@
 import {Error, Result, Ref} from "./bytesrepr";
 import {UREF_ADDR_LENGTH} from "./constants";
-import {checkTypedArrayEqual} from "./utils";
+import {checkTypedArrayEqual, typedToArray} from "./utils";
 import {is_valid_uref, revert} from "./externals";
 
 /**
@@ -115,11 +115,7 @@ export class URef {
      * format.
      */
     toBytes(): Array<u8> {
-        let result = new Array<u8>(this.bytes.length);
-        for (let i = 0; i < this.bytes.length; i++) {
-            result[i] = this.bytes[i];
-        }
-
+        let result = typedToArray(this.bytes);
         result.push(<u8>this.accessRights);
         return result;
     }

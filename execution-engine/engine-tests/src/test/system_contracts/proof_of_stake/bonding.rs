@@ -9,10 +9,10 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use types::{account::PublicKey, ApiError, Key, URef, U512};
+use types::{account::AccountHash, runtime_args, ApiError, Key, RuntimeArgs, URef, U512};
 
 const CONTRACT_POS_BONDING: &str = "pos_bonding.wasm";
-const ACCOUNT_1_ADDR: PublicKey = PublicKey::ed25519_from([1u8; 32]);
+const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const ACCOUNT_1_SEED_AMOUNT: u64 = 100_000_000 * 2;
 const ACCOUNT_1_STAKE: u64 = 42_000;
 const ACCOUNT_1_UNBOND_1: u64 = 22_000;
@@ -27,6 +27,10 @@ const TEST_BOND: &str = "bond";
 const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
 const TEST_UNBOND: &str = "unbond";
+
+const ARG_AMOUNT: &str = "amount";
+const ARG_ENTRY_POINT: &str = "entry_point";
+const ARG_ACCOUNT_PK: &str = "account_hash";
 
 fn get_pos_purse_by_name(builder: &InMemoryWasmTestBuilder, purse_name: &str) -> Option<URef> {
     let pos_contract = builder.get_pos_contract();
@@ -50,7 +54,7 @@ fn should_run_successful_bond_and_unbond() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::new(
-            PublicKey::ed25519_from([42; 32]),
+            AccountHash::new([42; 32]),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -67,12 +71,15 @@ fn should_run_successful_bond_and_unbond() {
         .get_account(DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
-    let pos = builder.get_pos_contract_uref();
+    let pos = builder.get_pos_contract_hash();
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
-        (String::from(TEST_BOND), U512::from(GENESIS_ACCOUNT_STAKE)),
+        runtime_args! {
+            ARG_ENTRY_POINT => String::from(TEST_BOND),
+            ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE)
+        },
     )
     .build();
 
@@ -90,9 +97,7 @@ fn should_run_successful_bond_and_unbond() {
         .expect("should have exec response");
     let mut genesis_gas_cost = utils::get_exec_costs(exec_response)[0];
 
-    let contract = builder
-        .get_contract(pos.remove_access_rights())
-        .expect("should have contract");
+    let contract = builder.get_contract(pos).expect("should have contract");
 
     let lookup_key = format!(
         "v_{}_{}",
@@ -111,21 +116,21 @@ fn should_run_successful_bond_and_unbond() {
     let exec_request_2 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
-        (
-            String::from(TEST_SEED_NEW_ACCOUNT),
-            ACCOUNT_1_ADDR,
-            U512::from(ACCOUNT_1_SEED_AMOUNT),
-        ),
+        runtime_args! {
+            ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
+            ARG_ACCOUNT_PK => ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(ACCOUNT_1_SEED_AMOUNT),
+        },
     )
     .build();
 
     let exec_request_3 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_POS_BONDING,
-        (
-            String::from(TEST_BOND_FROM_MAIN_PURSE),
-            U512::from(ACCOUNT_1_STAKE),
-        ),
+        runtime_args! {
+            ARG_ENTRY_POINT => String::from(TEST_BOND_FROM_MAIN_PURSE),
+            ARG_AMOUNT => U512::from(ACCOUNT_1_STAKE),
+        },
     )
     .build();
 
@@ -149,12 +154,10 @@ fn should_run_successful_bond_and_unbond() {
         .get_account(ACCOUNT_1_ADDR)
         .expect("should get account 1");
 
-    let pos = builder.get_pos_contract_uref();
+    let pos = builder.get_pos_contract_hash();
 
     // Verify that genesis account is in validator queue
-    let contract = builder
-        .get_contract(pos.remove_access_rights())
-        .expect("should have contract");
+    let contract = builder.get_contract(pos).expect("should have contract");
 
     let lookup_key = format!(
         "v_{}_{}",
@@ -178,10 +181,10 @@ fn should_run_successful_bond_and_unbond() {
     let exec_request_4 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_POS_BONDING,
-        (
-            String::from(TEST_UNBOND),
-            Some(U512::from(ACCOUNT_1_UNBOND_1)),
-        ),
+        runtime_args! {
+            ARG_ENTRY_POINT => String::from(TEST_UNBOND),
+            ARG_AMOUNT => Some(U512::from(ACCOUNT_1_UNBOND_1)),
+        },
     )
     .build();
     let account_1_bal_before = builder.get_purse_balance(account_1.main_purse());
@@ -236,10 +239,10 @@ fn should_run_successful_bond_and_unbond() {
     let exec_request_5 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
-        (
-            String::from(TEST_UNBOND),
-            Some(U512::from(GENESIS_ACCOUNT_UNBOND_1)),
-        ),
+        runtime_args! {
+            ARG_ENTRY_POINT => String::from(TEST_UNBOND),
+            ARG_AMOUNT => Some(U512::from(GENESIS_ACCOUNT_UNBOND_1)),
+        },
     )
     .build();
     let mut builder = InMemoryWasmTestBuilder::from_result(result);
@@ -281,10 +284,10 @@ fn should_run_successful_bond_and_unbond() {
     let exec_request_6 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_POS_BONDING,
-        (
-            String::from(TEST_UNBOND),
-            Some(U512::from(ACCOUNT_1_UNBOND_2)),
-        ),
+        runtime_args! {
+            ARG_ENTRY_POINT => String::from(TEST_UNBOND),
+            ARG_AMOUNT => Some(U512::from(ACCOUNT_1_UNBOND_2)),
+        },
     )
     .build();
 
@@ -332,7 +335,10 @@ fn should_run_successful_bond_and_unbond() {
     let exec_request_7 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
-        (String::from(TEST_UNBOND), None as Option<U512>),
+        runtime_args! {
+            ARG_ENTRY_POINT => String::from(TEST_UNBOND),
+            ARG_AMOUNT => None as Option<U512>
+        },
     )
     .build();
 
@@ -424,7 +430,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::new(
-            PublicKey::ed25519_from([42; 32]),
+            AccountHash::new([42; 32]),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -437,20 +443,20 @@ fn should_fail_bonding_with_insufficient_funds() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
-        (
-            String::from(TEST_SEED_NEW_ACCOUNT),
-            ACCOUNT_1_ADDR,
-            *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
-        ),
+        runtime_args! {
+            ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
+            ARG_ACCOUNT_PK => ACCOUNT_1_ADDR,
+            ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
+        },
     )
     .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         ACCOUNT_1_ADDR,
         CONTRACT_POS_BONDING,
-        (
-            String::from(TEST_BOND_FROM_MAIN_PURSE),
-            *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
-        ),
+        runtime_args! {
+            ARG_ENTRY_POINT => TEST_BOND_FROM_MAIN_PURSE,
+            ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
+        },
     )
     .build();
 
@@ -471,7 +477,11 @@ fn should_fail_bonding_with_insufficient_funds() {
     let error_message = utils::get_error_message(response);
 
     if !cfg!(feature = "enable-bonding") {
-        assert!(error_message.contains(&format!("{:?}", ApiError::Unhandled)));
+        assert!(
+            error_message.contains(&format!("{:?}", ApiError::Unhandled)),
+            "error is {:?}",
+            error_message
+        );
     } else {
         // pos::Error::BondTransferFailed => 8
         assert!(error_message.contains(&format!("{:?}", ApiError::ProofOfStake(8))));
@@ -484,7 +494,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::new(
-            PublicKey::ed25519_from([42; 32]),
+            AccountHash::new([42; 32]),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()) * Motes::new(2.into()),
             Motes::new(GENESIS_VALIDATOR_STAKE.into()),
         );
@@ -497,7 +507,10 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     let exec_request = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_POS_BONDING,
-        (String::from(TEST_UNBOND), Some(U512::from(42))),
+        runtime_args! {
+            ARG_ENTRY_POINT => TEST_UNBOND,
+            ARG_AMOUNT => Some(U512::from(42)),
+        },
     )
     .build();
 

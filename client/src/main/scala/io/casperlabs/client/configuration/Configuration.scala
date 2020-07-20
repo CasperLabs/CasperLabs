@@ -1,9 +1,12 @@
 package io.casperlabs.client.configuration
 import com.google.protobuf.ByteString
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream, File, InputStream}
+import java.io.{ByteArrayOutputStream, File, InputStream}
 import java.nio.file.Files
+
 import io.casperlabs.client.configuration.Options.DeployOptions
-import io.casperlabs.casper.consensus.Deploy.{Arg, Code}, Code.Contract
+import io.casperlabs.casper.consensus.Deploy.{Arg, Code}
+import Code.{Contract, StoredContract, StoredVersionedContract, WasmContract}
+import io.casperlabs.casper.consensus.state.SemVer
 import io.casperlabs.crypto.Keys.PublicKey
 import io.casperlabs.crypto.codec.Base16
 import org.apache.commons.io._
@@ -22,18 +25,24 @@ final case class CodeConfig(
     // Point at a file on disk.
     file: Option[File],
     // Hash of a stored contract.
-    hash: Option[String],
+    contractHash: Option[String],
+    // Hash of a stored contract package.
+    packageHash: Option[String],
     // Name of a stored contract.
-    name: Option[String],
-    // URef of a stored contract.
-    uref: Option[String],
+    contractName: Option[String],
+    // Name of a stored contract package.
+    packageName: Option[String],
     // Arguments parsed from JSON
     args: Option[Seq[Arg]],
+    // Name of the method that will be called during execution of the contract.
+    entryPoint: Option[String],
+    // Version of the contract that is being called. No version specified means most recent version.
+    version: Option[Int],
     // Name of a pre-packaged contract in the client JAR.
     resource: Option[String] = None
 )
 object CodeConfig {
-  val empty = CodeConfig(None, None, None, None, None, None)
+  val empty = CodeConfig(None, None, None, None, None, None, None, None, None)
 }
 
 /** Encapsulate reading session and payment contracts from disk or resources
@@ -62,17 +71,23 @@ object DeployConfig {
     DeployConfig(
       sessionOptions = CodeConfig(
         file = args.session.toOption,
-        hash = args.sessionHash.toOption,
-        name = args.sessionName.toOption,
-        uref = args.sessionUref.toOption,
-        args = args.sessionArgs.toOption.map(_.args)
+        contractHash = args.sessionContractHash.toOption,
+        packageHash = args.sessionPackageHash.toOption,
+        contractName = args.sessionContractName.toOption,
+        packageName = args.sessionPackageName.toOption,
+        args = args.sessionArgs.toOption.map(_.args),
+        entryPoint = args.sessionEntryPoint.toOption,
+        version = args.sessionVer.toOption
       ),
       paymentOptions = CodeConfig(
         file = args.payment.toOption,
-        hash = args.paymentHash.toOption,
-        name = args.paymentName.toOption,
-        uref = args.paymentUref.toOption,
-        args = args.paymentArgs.toOption.map(_.args)
+        contractHash = args.paymentContractHash.toOption,
+        packageHash = args.paymentPackageHash.toOption,
+        contractName = args.paymentContractName.toOption,
+        packageName = args.paymentPackageName.toOption,
+        args = args.paymentArgs.toOption.map(_.args),
+        entryPoint = args.paymentEntryPoint.toOption,
+        version = args.paymentVer.toOption
       ),
       gasPrice = args.gasPrice(),
       paymentAmount = args.paymentAmount.toOption,
@@ -94,24 +109,53 @@ object DeployConfig {
   private def toCode(opts: CodeConfig, defaultArgs: Seq[Arg]): Code = {
     val contract = opts.file.map { f =>
       val wasm = ByteString.copyFrom(Files.readAllBytes(f.toPath))
-      Contract.Wasm(wasm)
+      Contract.WasmContract(WasmContract(wasm))
     } orElse {
-      opts.hash.map { x =>
-        Contract.Hash(ByteString.copyFrom(Base16.decode(x)))
+
+      opts.contractHash.map { x =>
+        Contract.StoredContract(
+          StoredContract()
+            .withContractHash(ByteString.copyFrom(Base16.decode(x)))
+            .withEntryPoint(opts.entryPoint.getOrElse(""))
+        )
       }
     } orElse {
-      opts.name.map { x =>
-        Contract.Name(x)
+
+      opts.contractName.map { x =>
+        Contract.StoredContract(
+          StoredContract()
+            .withName(x)
+            .withEntryPoint(opts.entryPoint.getOrElse(""))
+        )
       }
+
     } orElse {
-      opts.uref.map { x =>
-        Contract.Uref(ByteString.copyFrom(Base16.decode(x)))
+
+      opts.packageHash.map { x =>
+        Contract.StoredVersionedContract(
+          StoredVersionedContract()
+            .withPackageHash(ByteString.copyFrom(Base16.decode(x)))
+            .withVersion(opts.version.getOrElse(0))
+            .withEntryPoint(opts.entryPoint.getOrElse(""))
+        )
       }
+
+    } orElse {
+
+      opts.packageName.map { x =>
+        Contract.StoredVersionedContract(
+          StoredVersionedContract()
+            .withName(x)
+            .withVersion(opts.version.getOrElse(0))
+            .withEntryPoint(opts.entryPoint.getOrElse(""))
+        )
+      }
+
     } orElse {
       opts.resource.map { x =>
         val wasm =
           ByteString.copyFrom(consumeInputStream(getClass.getClassLoader.getResourceAsStream(x)))
-        Contract.Wasm(wasm)
+        Contract.WasmContract(WasmContract(wasm))
       }
     } getOrElse {
       Contract.Empty

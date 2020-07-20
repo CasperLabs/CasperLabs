@@ -13,14 +13,10 @@ const COMMAND_TEST_READ_UREF1 = "test-read-uref1";
 const COMMAND_TEST_READ_UREF2 = "test-read-uref2";
 const COMMAND_INCREASE_UREF2 = "increase-uref2";
 const COMMAND_OVERWRITE_UREF2 = "overwrite-uref2";
+const ARG_COMMAND = "command";
 
 export function call(): void {
-  let commandBytes = CL.getArg(0);
-  if (commandBytes === null) {
-    Error.fromErrorCode(ErrorCode.MissingArgument).revert();
-    return;
-  }
-
+  let commandBytes = CL.getNamedArg(ARG_COMMAND);
   let commandResult = fromBytesString(commandBytes);
   if (commandResult.hasError()) {
     Error.fromErrorCode(ErrorCode.InvalidArgument);
@@ -84,6 +80,10 @@ export function call(): void {
 
     // Read data through dedicated FFI function
     let uref1 = CL.getKey("hello-world");
+    if (uref1 === null) {
+      Error.fromErrorCode(ErrorCode.GetKey).revert();
+      return;
+    }
     let uref1Bytes = uref1.read();
     if (uref1Bytes === null) {
       Error.fromUserError(4464 + 7).revert();
@@ -103,6 +103,10 @@ export function call(): void {
   else if (command == COMMAND_TEST_READ_UREF2) {
     // Get the big value back
     let bigValueKey = CL.getKey("big-value");
+    if (bigValueKey === null) {
+      Error.fromErrorCode(ErrorCode.GetKey).revert();
+      return;
+    }
     let bigValueBytes = bigValueKey.read();
     if (bigValueBytes === null) {
       Error.fromUserError(4464 + 12).revert();
@@ -123,6 +127,10 @@ export function call(): void {
   else if (command == COMMAND_INCREASE_UREF2) {
     // Get the big value back
     let bigValueKey = CL.getKey("big-value");
+    if (bigValueKey === null) {
+      Error.fromErrorCode(ErrorCode.GetKey).revert();
+      return;
+    }
     // Increase by 1
     bigValueKey.add(CLValue.fromU512(U512.fromU64(1)));
     let newBigValueBytes = bigValueKey.read();
@@ -144,6 +152,10 @@ export function call(): void {
   else if (command == COMMAND_OVERWRITE_UREF2) {
     // Get the big value back
     let bigValueKey = CL.getKey("big-value");
+    if (bigValueKey === null) {
+      Error.fromErrorCode(ErrorCode.GetKey).revert();
+      return;
+    }
     // I can overwrite some data under the pointer
     bigValueKey.write(CLValue.fromU512(U512.fromU64(123456789)));
 

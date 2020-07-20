@@ -142,8 +142,6 @@ mod tests {
     fn should_be_able_to_generate_correlation_id() {
         let correlation_id = CorrelationId::new();
 
-        //println!("{}", correlation_id.to_string());
-
         assert_ne!(
             correlation_id.to_string(),
             "00000000-0000-0000-0000-000000000000",

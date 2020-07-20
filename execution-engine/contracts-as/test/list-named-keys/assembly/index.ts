@@ -5,10 +5,8 @@ import {fromBytesMap, fromBytesString} from "../../../../contract-as/assembly/by
 import {Key} from "../../../../contract-as/assembly/key";
 import {checkItemsEqual} from "../../../../contract-as/assembly/utils";
 
-enum Args {
-  InitialNamedKeys = 0,
-  NewNamedKeys = 1,
-}
+const ARG_INITIAL_NAMED_KEYS = "initial_named_args";
+const ARG_NEW_NAMED_KEYS = "new_named_keys";
 
 enum CustomError {
   MissingInitialNamedKeys = 0,
@@ -20,11 +18,7 @@ enum CustomError {
 }
 
 export function call(): void {
-  let expectedInitialNamedKeysBytes = CL.getArg(Args.InitialNamedKeys);
-  if (expectedInitialNamedKeysBytes === null) {
-    Error.fromUserError(<u16>CustomError.MissingInitialNamedKeys).revert();
-    return;
-  }
+  let expectedInitialNamedKeysBytes = CL.getNamedArg(ARG_INITIAL_NAMED_KEYS);
 
   const mapResult = fromBytesMap<String, Key>(
     expectedInitialNamedKeysBytes,
@@ -50,13 +44,7 @@ export function call(): void {
     return;
   }
 
-  let newNamedKeysBytes = CL.getArg(Args.NewNamedKeys);
-  if (newNamedKeysBytes === null) {
-    Error.fromUserError(<u16>CustomError.MissingNewNamedKeys).revert();
-    return;
-  }
-
-
+  let newNamedKeysBytes = CL.getNamedArg(ARG_NEW_NAMED_KEYS);
   const mapResult2 = fromBytesMap<String, Key>(
     newNamedKeysBytes,
     fromBytesString,

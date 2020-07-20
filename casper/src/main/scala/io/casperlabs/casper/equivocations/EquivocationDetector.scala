@@ -16,6 +16,7 @@ import io.casperlabs.storage.dag.DagRepresentation
 import io.casperlabs.shared.Sorting.jRankOrdering
 import io.casperlabs.shared.ByteStringPrettyPrinter.byteStringShow
 import scala.collection.immutable.{Map, Set}
+import com.google.protobuf.ByteString
 
 object EquivocationDetector {
 
@@ -99,13 +100,15 @@ object EquivocationDetector {
                           // Maybe this is a retry of a message that failed partially.
                           Log[F]
                             .warn(
-                              s"The latest message from ${message.validatorId.show -> "validator"} is the current ${message.messageHash.show -> "message"} itself."
+                              s"The latest message from ${PrettyPrinter
+                                .buildString(message.validatorId) -> "validator"} is the current ${message.messageHash.show -> "message"} itself."
                             )
                             .as(false)
                         } else if (message.validatorPrevMessageHash != head.messageHash) {
                           Log[F]
                             .warn(
-                              s"Found equivocation: justifications of ${message.messageHash.show -> "message"} don't cite the latest message by ${message.validatorId.show -> "validator"}: ${head.messageHash.show -> "latestMessage"}"
+                              s"Found equivocation: justifications of ${message.messageHash.show -> "message"} don't cite the latest message by ${PrettyPrinter
+                                .buildString(message.validatorId)                                -> "validator"}: ${head.messageHash.show -> "latestMessage"}"
                             )
                             .as(true)
                         } else false.pure[F]

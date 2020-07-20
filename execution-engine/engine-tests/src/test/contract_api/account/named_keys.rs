@@ -4,7 +4,7 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{bytesrepr::FromBytes, CLTyped, CLValue, Key, U512};
+use types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, RuntimeArgs, U512};
 
 const CONTRACT_NAMED_KEYS: &str = "named_keys.wasm";
 const EXPECTED_UREF_VALUE: u64 = 123_456_789u64;
@@ -20,11 +20,15 @@ const COMMAND_TEST_READ_UREF1: &str = "test-read-uref1";
 const COMMAND_TEST_READ_UREF2: &str = "test-read-uref2";
 const COMMAND_INCREASE_UREF2: &str = "increase-uref2";
 const COMMAND_OVERWRITE_UREF2: &str = "overwrite-uref2";
+const ARG_COMMAND: &str = "command";
 
 fn run_command(builder: &mut InMemoryWasmTestBuilder, command: &str) {
-    let exec_request =
-        ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, CONTRACT_NAMED_KEYS, (command,))
-            .build();
+    let exec_request = ExecuteRequestBuilder::standard(
+        DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_NAMED_KEYS,
+        runtime_args! { ARG_COMMAND => command },
+    )
+    .build();
     builder
         .exec(exec_request)
         .commit()

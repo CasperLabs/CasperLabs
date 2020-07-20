@@ -49,6 +49,10 @@ fn build_package<T: Package>() {
         target_dir.to_str().expect("Expected valid unicode")
     ));
 
+    if env::var("CARGO_FEATURE_NO_UNSTABLE_FEATURES").is_ok() {
+        build_args.push("--features=no-unstable-features".to_string());
+    }
+
     // Build the contract.
     let output = Command::new(cargo)
         .current_dir(T::ROOT)

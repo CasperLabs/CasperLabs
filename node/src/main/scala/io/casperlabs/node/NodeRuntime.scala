@@ -30,7 +30,7 @@ import io.casperlabs.comm._
 import io.casperlabs.comm.discovery.NodeUtils._
 import io.casperlabs.comm.discovery._
 import io.casperlabs.comm.gossiping.WaitHandle
-import io.casperlabs.comm.gossiping.relaying.BlockRelaying
+import io.casperlabs.comm.gossiping.relaying.{BlockRelaying, DeployRelaying}
 import io.casperlabs.comm.grpc.SslContexts
 import io.casperlabs.comm.rp._
 import io.casperlabs.ipc.ChainSpec
@@ -46,6 +46,7 @@ import io.casperlabs.storage.SQLiteStorage
 import io.casperlabs.storage.block._
 import io.casperlabs.storage.dag._
 import io.casperlabs.storage.deploy.DeployStorageWriter
+import io.casperlabs.storage.era._
 import io.casperlabs.storage.util.fileIO.IOError._
 import io.casperlabs.storage.util.fileIO._
 import io.netty.handler.ssl.ClientAuth
@@ -55,7 +56,6 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.Location
 
 import scala.concurrent.duration._
-import io.casperlabs.comm.gossiping.relaying.DeployRelaying
 
 class NodeRuntime private[node] (
     conf: Configuration,
@@ -178,7 +178,9 @@ class NodeRuntime private[node] (
                     cache: DagStorage[Task] with DagRepresentation[Task] with FinalityStorage[
                       Task
                     ] with AncestorsStorage[Task]
-                )
+                ),
+              wrapEraStorage = (underlyingEraStorage: EraStorage[Task]) =>
+                CachingEraStorage[Task](underlyingEraStorage)
             )
           )
 
@@ -334,7 +336,7 @@ class NodeRuntime private[node] (
         conf,
         chainSpec,
         genesis,
-        maybeValidatorId.map(id => ByteString.copyFrom(id.publicKey)),
+        maybeValidatorId,
         isSyncedRef.get,
         readTransactor
       )

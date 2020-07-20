@@ -3,15 +3,19 @@ use engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
+use types::RuntimeArgs;
 
 const CONTRACT_EE_584_REGRESSION: &str = "ee_584_regression.wasm";
 
 #[ignore]
 #[test]
 fn should_run_ee_584_no_errored_session_transforms() {
-    let exec_request =
-        ExecuteRequestBuilder::standard(DEFAULT_ACCOUNT_ADDR, CONTRACT_EE_584_REGRESSION, ())
-            .build();
+    let exec_request = ExecuteRequestBuilder::standard(
+        DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_EE_584_REGRESSION,
+        RuntimeArgs::default(),
+    )
+    .build();
 
     let mut builder = InMemoryWasmTestBuilder::default();
 

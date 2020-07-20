@@ -18,12 +18,8 @@ object KeySerializationTest {
 
   val genHashKey: Gen[Key.Hash] = ByteArray32SerializationTest.genByteArray32.map(Key.Hash(_))
   val genURefKey: Gen[Key.URef] = URefSerializationTest.genURef.map(Key.URef(_))
-  val genLocalKey: Gen[Key.Local] = for {
-    seed <- ByteArray32SerializationTest.genByteArray32
-    hash <- ByteArray32SerializationTest.genByteArray32
-  } yield Key.Local(seed, hash)
 
-  val genKey: Gen[Key] = Gen.oneOf(genAccountKey, genHashKey, genURefKey, genLocalKey)
+  val genKey: Gen[Key] = Gen.oneOf(genAccountKey, genHashKey, genURefKey)
 
   implicit val arbKey: Arbitrary[Key] = Arbitrary(genKey)
 }

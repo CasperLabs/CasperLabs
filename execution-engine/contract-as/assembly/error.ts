@@ -66,7 +66,7 @@ export const enum ErrorCode {
     PermissionDenied = 23,
     /** The given public key is not associated with the given account. */
     MissingKey = 24,
-    /** Removing/updating the given associated public key would cause the total weight of all remaining `PublicKey`s to fall below one of the action thresholds for the given account. */
+    /** Removing/updating the given associated public key would cause the total weight of all remaining `AccountHash`s to fall below one of the action thresholds for the given account. */
     ThresholdViolation = 25,
     /** Setting the key-management threshold to a value lower than the deployment threshold is disallowed. */
     KeyManagementThreshold = 26,

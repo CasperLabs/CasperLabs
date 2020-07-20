@@ -5,12 +5,10 @@ use contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{account::PublicKey, ApiError, TransferredTo, U512};
+use types::{account::AccountHash, ApiError, TransferredTo, U512};
 
-enum Arg {
-    PublicKey = 0,
-    Amount = 1,
-}
+const ARG_ACCOUNT_HASH: &str = "account_hash";
+const ARG_AMOUNT: &str = "amount";
 
 #[repr(u16)]
 enum Error {
@@ -19,13 +17,9 @@ enum Error {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let public_key: PublicKey = runtime::get_arg(Arg::PublicKey as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    let amount: U512 = runtime::get_arg(Arg::Amount as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-    match system::transfer_to_account(public_key, amount).unwrap_or_revert() {
+    let account_hash: AccountHash = runtime::get_named_arg(ARG_ACCOUNT_HASH);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    match system::transfer_to_account(account_hash, amount).unwrap_or_revert() {
         TransferredTo::NewAccount => {
             runtime::revert(ApiError::User(Error::NonExistentAccount as u16))
         }

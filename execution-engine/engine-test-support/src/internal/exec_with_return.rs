@@ -1,6 +1,5 @@
 use std::{cell::RefCell, collections::BTreeSet, convert::TryInto, rc::Rc};
 
-use contract::args_parser::ArgsParser;
 use engine_core::{
     engine_state::{
         executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,
@@ -15,13 +14,11 @@ use engine_shared::{gas::Gas, newtypes::CorrelationId};
 use engine_storage::{global_state::StateProvider, protocol_data::ProtocolData};
 use engine_wasm_prep::Preprocessor;
 use types::{
-    account::PublicKey, bytesrepr::FromBytes, BlockTime, CLTyped, CLValue, Key, Phase,
-    ProtocolVersion, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, EntryPointType, Key, Phase,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_COSTS};
-
-const INIT_FN_STORE_ID: u32 = 0;
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
@@ -31,11 +28,12 @@ const INIT_FN_STORE_ID: u32 = 0;
 pub fn exec<S, T>(
     config: EngineConfig,
     builder: &mut WasmTestBuilder<S>,
-    address: PublicKey,
+    address: AccountHash,
     wasm_file: &str,
     block_time: u64,
     deploy_hash: [u8; 32],
-    args: impl ArgsParser,
+    entry_point_name: &str,
+    args: RuntimeArgs,
     extra_urefs: Vec<URef>,
 ) -> Option<(T, Vec<URef>, ExecutionEffect)>
 where
@@ -63,11 +61,13 @@ where
         Rc::new(RefCell::new(address_generator))
     };
     let gas_counter = Gas::default();
-    let fn_store_id = INIT_FN_STORE_ID;
+    let fn_store_id = {
+        let fn_store_id = AddressGenerator::new(&deploy_hash, phase);
+        Rc::new(RefCell::new(fn_store_id))
+    };
     let gas_limit = Gas::new(U512::from(std::u64::MAX));
     let protocol_version = ProtocolVersion::V1_0_0;
     let correlation_id = CorrelationId::new();
-    let arguments: Vec<CLValue> = args.parse().expect("should be able to serialize args");
     let base_key = Key::Account(address);
 
     let account = builder.get_account(address).expect("should find account");
@@ -82,17 +82,18 @@ where
     };
 
     let protocol_data = {
-        let mint = builder.get_mint_contract_uref();
-        let pos = builder.get_mint_contract_uref();
-        let standard_payment = builder.get_standard_payment_contract_uref();
+        let mint = builder.get_mint_contract_hash();
+        let pos = builder.get_mint_contract_hash();
+        let standard_payment = builder.get_standard_payment_contract_hash();
         ProtocolData::new(*DEFAULT_WASM_COSTS, mint, pos, standard_payment)
     };
 
     let context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
+        EntryPointType::Session, // Is it always?
         &mut named_keys,
         access_rights,
-        arguments,
+        args,
         BTreeSet::new(),
         &account,
         base_key,
@@ -129,12 +130,19 @@ where
         )
         .expect("should get wasm module");
 
-    let (instance, memory) = runtime::instance_and_memory(parity_module.clone(), protocol_version)
-        .expect("should be able to make wasm instance from module");
+    let (instance, memory) =
+        runtime::instance_and_memory(parity_module.clone().take_module(), protocol_version)
+            .expect("should be able to make wasm instance from module");
 
-    let mut runtime = Runtime::new(config, Default::default(), memory, parity_module, context);
+    let mut runtime = Runtime::new(
+        config,
+        Default::default(),
+        memory,
+        parity_module.take_module(),
+        context,
+    );
 
-    match instance.invoke_export("call", &[], &mut runtime) {
+    match instance.invoke_export(entry_point_name, &[], &mut runtime) {
         Ok(_) => None,
         Err(e) => {
             if let Some(host_error) = e.as_host_error() {

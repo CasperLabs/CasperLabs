@@ -55,7 +55,7 @@ export class DeployContainer {
         this.deploy
           .getDeploy()!
           .getHeader()!
-          .getAccountPublicKey_asU8()
+          .getAccountPublicKeyHash_asU8()
       );
       if (balance !== undefined) {
         this.balances.set(encodeBase16(blockHash), balance);

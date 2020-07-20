@@ -13,7 +13,7 @@ use engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use types::{account::PublicKey, Key, URef, U512};
+use types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 const CONTRACT_CREATE_ACCOUNTS: &str = "create_accounts.wasm";
 const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";
@@ -23,7 +23,13 @@ const CONTRACT_TRANSFER_TO_PURSE: &str = "transfer_to_purse.wasm";
 /// Size of batch used in multiple execs benchmark, and multiple deploys per exec cases.
 const TRANSFER_BATCH_SIZE: u64 = 3;
 const PER_RUN_FUNDING: u64 = 10_000_000;
-const TARGET_ADDR: PublicKey = PublicKey::ed25519_from([127; 32]);
+const TARGET_ADDR: AccountHash = AccountHash::new([127; 32]);
+const ARG_AMOUNT: &str = "amount";
+const ARG_ACCOUNTS: &str = "accounts";
+const ARG_SEED_AMOUNT: &str = "seed_amount";
+const ARG_TOTAL_PURSES: &str = "total_purses";
+const ARG_TARGET: &str = "target";
+const ARG_TARGET_PURSE: &str = "target_purse";
 
 /// Converts an integer into an array of type [u8; 32] by converting integer
 /// into its big endian representation and embedding it at the end of the
@@ -34,16 +40,11 @@ fn make_deploy_hash(i: u64) -> [u8; 32] {
     result
 }
 
-fn bootstrap(data_dir: &Path, accounts: &[PublicKey], amount: U512) -> LmdbWasmTestBuilder {
-    let accounts_bytes: Vec<Vec<u8>> = accounts
-        .iter()
-        .map(|public_key| public_key.as_bytes().to_vec())
-        .collect();
-
+fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbWasmTestBuilder {
     let exec_request = ExecuteRequestBuilder::standard(
         DEFAULT_ACCOUNT_ADDR,
         CONTRACT_CREATE_ACCOUNTS,
-        (accounts_bytes, amount),
+        runtime_args! { ARG_ACCOUNTS => accounts, ARG_SEED_AMOUNT => amount },
     )
     .build();
 
@@ -64,14 +65,14 @@ fn bootstrap(data_dir: &Path, accounts: &[PublicKey], amount: U512) -> LmdbWasmT
 
 fn create_purses(
     builder: &mut LmdbWasmTestBuilder,
-    source: PublicKey,
+    source: AccountHash,
     total_purses: u64,
     purse_amount: U512,
 ) -> Vec<URef> {
     let exec_request = ExecuteRequestBuilder::standard(
         source,
         CONTRACT_CREATE_PURSES,
-        (total_purses, purse_amount),
+        runtime_args! { ARG_TOTAL_PURSES => total_purses, ARG_SEED_AMOUNT => purse_amount },
     )
     .build();
 
@@ -102,7 +103,7 @@ fn create_purses(
 /// batch determined by value of TRANSFER_BATCH_SIZE.
 fn transfer_to_account_multiple_execs(
     builder: &mut LmdbWasmTestBuilder,
-    account: PublicKey,
+    account: AccountHash,
     should_commit: bool,
 ) {
     let amount = U512::one();
@@ -111,7 +112,10 @@ fn transfer_to_account_multiple_execs(
         let exec_request = ExecuteRequestBuilder::standard(
             DEFAULT_ACCOUNT_ADDR,
             CONTRACT_TRANSFER_TO_EXISTING_ACCOUNT,
-            (account, amount),
+            runtime_args! {
+                ARG_TARGET => account,
+                ARG_AMOUNT => amount,
+            },
         )
         .build();
 
@@ -125,7 +129,7 @@ fn transfer_to_account_multiple_execs(
 /// Executes multiple deploys per single exec with based on TRANSFER_BATCH_SIZE.
 fn transfer_to_account_multiple_deploys(
     builder: &mut LmdbWasmTestBuilder,
-    account: PublicKey,
+    account: AccountHash,
     should_commit: bool,
 ) {
     let mut exec_builder = ExecuteRequestBuilder::new();
@@ -133,10 +137,13 @@ fn transfer_to_account_multiple_deploys(
     for i in 0..TRANSFER_BATCH_SIZE {
         let deploy = DeployItemBuilder::default()
             .with_address(DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes((U512::from(PER_RUN_FUNDING),))
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(PER_RUN_FUNDING) })
             .with_session_code(
                 CONTRACT_TRANSFER_TO_EXISTING_ACCOUNT,
-                (account, U512::one()),
+                runtime_args! {
+                    ARG_TARGET => account,
+                    ARG_AMOUNT => U512::one(),
+                },
             )
             .with_authorization_keys(&[DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash(make_deploy_hash(i)) // deploy_hash
@@ -165,7 +172,7 @@ fn transfer_to_purse_multiple_execs(
         let exec_request = ExecuteRequestBuilder::standard(
             TARGET_ADDR,
             CONTRACT_TRANSFER_TO_PURSE,
-            (purse, amount),
+            runtime_args! { ARG_TARGET_PURSE => purse, ARG_AMOUNT => amount },
         )
         .build();
 
@@ -187,8 +194,11 @@ fn transfer_to_purse_multiple_deploys(
     for i in 0..TRANSFER_BATCH_SIZE {
         let deploy = DeployItemBuilder::default()
             .with_address(TARGET_ADDR)
-            .with_empty_payment_bytes((U512::from(PER_RUN_FUNDING),))
-            .with_session_code(CONTRACT_TRANSFER_TO_PURSE, (purse, U512::one()))
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_session_code(
+                CONTRACT_TRANSFER_TO_PURSE,
+                runtime_args! { ARG_TARGET_PURSE => purse, ARG_AMOUNT => U512::one() },
+            )
             .with_authorization_keys(&[TARGET_ADDR])
             .with_deploy_hash(make_deploy_hash(i)) // deploy_hash
             .build();
@@ -208,7 +218,7 @@ pub fn transfer_to_existing_accounts(group: &mut BenchmarkGroup<WallTime>, shoul
     let bootstrap_accounts = vec![target_account];
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = bootstrap(data_dir.path(), &bootstrap_accounts, U512::one());
+    let mut builder = bootstrap(data_dir.path(), bootstrap_accounts.clone(), U512::one());
 
     group.bench_function(
         format!(
@@ -224,7 +234,7 @@ pub fn transfer_to_existing_accounts(group: &mut BenchmarkGroup<WallTime>, shoul
     );
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = bootstrap(data_dir.path(), &bootstrap_accounts, U512::one());
+    let mut builder = bootstrap(data_dir.path(), bootstrap_accounts, U512::one());
 
     group.bench_function(
         format!(
@@ -245,7 +255,11 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
     let bootstrap_accounts = vec![target_account];
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = bootstrap(data_dir.path(), &bootstrap_accounts, *DEFAULT_PAYMENT * 100);
+    let mut builder = bootstrap(
+        data_dir.path(),
+        bootstrap_accounts.clone(),
+        *DEFAULT_PAYMENT * 100,
+    );
     let purses = create_purses(&mut builder, target_account, 1, U512::one());
 
     group.bench_function(
@@ -263,7 +277,7 @@ pub fn transfer_to_existing_purses(group: &mut BenchmarkGroup<WallTime>, should_
     );
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = bootstrap(data_dir.path(), &bootstrap_accounts, *DEFAULT_PAYMENT * 10);
+    let mut builder = bootstrap(data_dir.path(), bootstrap_accounts, *DEFAULT_PAYMENT * 10);
     let purses = create_purses(&mut builder, TARGET_ADDR, 1, U512::one());
 
     group.bench_function(

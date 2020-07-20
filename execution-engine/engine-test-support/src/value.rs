@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use engine_shared::stored_value::StoredValue;
 use types::{
@@ -6,7 +6,7 @@ use types::{
     CLTyped, CLValue,
 };
 
-use crate::Result;
+use crate::{Account, Result};
 
 /// A value stored under a given key on the network.
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -32,5 +32,10 @@ impl Value {
     pub fn into_t<T: CLTyped + FromBytes>(self) -> Result<T> {
         let cl_value = CLValue::try_from(self.inner)?;
         Ok(cl_value.into_t()?)
+    }
+
+    /// Consumes and converts `self` into an `Account` or errors.
+    pub fn into_account(self) -> Result<Account> {
+        self.inner.try_into()
     }
 }

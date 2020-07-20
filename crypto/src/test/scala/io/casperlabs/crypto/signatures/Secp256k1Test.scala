@@ -8,6 +8,7 @@ import org.scalatest.{AppendedClues, BeforeAndAfterEach, FunSpec, Matchers}
 
 import scala.util.Random
 
+// Got examples from https://kjur.github.io/jsrsasign/sample/sample-ecdsa.html
 class Secp256k1Test extends FunSpec with Matchers with BeforeAndAfterEach with AppendedClues {
   describe("Secp256k1") {
 
@@ -29,7 +30,7 @@ class Secp256k1Test extends FunSpec with Matchers with BeforeAndAfterEach with A
           "040A629506E1B65CD9D2E0BA9C75DF9C4FED0DB16DC9625ED14397F0AFC836FAE595DC53F8B0EFE61E703075BD9B143BAC75EC0E19F82A2208CAEB32BE53414C40"
         )
       )
-      Secp256k1.verify(data, sig, pub)
+      Secp256k1.verify(data, sig, pub) shouldBe true
     }
     it("packaged in libsecp256k1 creates an ECDSA signature") {
       val data = Sha256.hash("testing".getBytes)
@@ -79,7 +80,6 @@ class Secp256k1Test extends FunSpec with Matchers with BeforeAndAfterEach with A
       Secp256k1.verify(data, signature, pub) shouldBe true
     }
     it("parses raw private and public keys") {
-      // Got examples from https://kjur.github.io/jsrsasign/sample/sample-ecdsa.html
       val privateKey = "IRhZtFy4Ku1BLUJ7kIyU54DhdtZq4xt5yjUR4mwtvYY="
       val publicKey =
         "BFK6dV60mW8hUxjhwkNq4bG5OX/6kr6SXS1pi1zH2BQVERpfIw9QELDvK6Vc7pDaUhEM0M+OwVo7AxJyqr5dXOo="
@@ -89,6 +89,28 @@ class Secp256k1Test extends FunSpec with Matchers with BeforeAndAfterEach with A
       Random.nextBytes(data)
       val signature = Secp256k1.sign(data, sec)
       Secp256k1.verify(data, signature, pub) shouldBe true
+    }
+
+    it("works with example values") {
+      val data = Sha256.hash("testing".getBytes)
+      val pub = PublicKey(
+        Base16.decode(
+          "043b9fed7c65b7f1e9c0f283bb3d72efdd15f182f95ec8a53968e9a6c549ce2b76a7dd52baf884ba1151469a95bec9783e6ac095cacd37ad728b3829ecdc7ca65d"
+        )
+      )
+      val sec = PrivateKey(
+        Base16.decode("2eb09ed84dff803a680368bb9b6bf31d87f5f93b30b640de63f5c4c4b9ca2124")
+      )
+
+      val sig = Signature(
+        Base16.decode(
+          "304402203abfd24b0474011715f8e43defb0f0a6582c1a92cd677bd933a4677b1eb076580220586a1c45a1ddea8ba66e9d67c5ca842c55bec2037accbc95577014ca4207af52"
+        )
+      )
+      Secp256k1.verify(data, sig, pub) shouldBe true
+
+      val sig2 = Secp256k1.sign(data, sec)
+      Secp256k1.verify(data, sig2, pub) shouldBe true
     }
   }
 

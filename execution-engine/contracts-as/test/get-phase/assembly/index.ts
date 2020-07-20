@@ -1,12 +1,10 @@
 import * as CL from "../../../../contract-as/assembly";
 import {Error, ErrorCode} from "../../../../contract-as/assembly/error";
 
+const ARG_PHASE = "phase";
+
 export function call(): void {
-  const phaseBytes = CL.getArg(0);
-  if (phaseBytes === null) {
-    Error.fromErrorCode(ErrorCode.MissingArgument).revert();
-    return;
-  }
+  const phaseBytes = CL.getNamedArg(ARG_PHASE);
   if (phaseBytes.length != 1) {
     Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
     return;

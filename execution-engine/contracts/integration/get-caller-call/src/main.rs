@@ -2,18 +2,20 @@
 #![no_main]
 
 use contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use types::{ApiError, ContractRef, Key};
+use types::{contracts::DEFAULT_ENTRY_POINT_NAME, ApiError, RuntimeArgs};
 
 const GET_CALLER_KEY: &str = "get_caller";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let get_caller_uref = runtime::get_key(GET_CALLER_KEY).unwrap_or_revert_with(ApiError::GetKey);
-    let contract_ref = match get_caller_uref {
-        Key::Hash(hash) => ContractRef::Hash(hash),
-        _ => runtime::revert(ApiError::UnexpectedKeyVariant),
-    };
-
+    let contract_hash = runtime::get_key(GET_CALLER_KEY)
+        .unwrap_or_revert_with(ApiError::GetKey)
+        .into_hash()
+        .unwrap_or_revert();
     // Call `define` part of the contract.
-    runtime::call_contract(contract_ref, ())
+    runtime::call_contract(
+        contract_hash,
+        DEFAULT_ENTRY_POINT_NAME,
+        RuntimeArgs::default(),
+    )
 }

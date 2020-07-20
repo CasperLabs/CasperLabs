@@ -60,7 +60,7 @@ object GraphzGenerator {
     val genesisBlocks =
       blockInfos
         .map(_.getSummary)
-        .filter(_.validatorPublicKey.isEmpty)
+        .filter(_.validatorPublicKeyHash.isEmpty)
         .map(b => hexShort(b.blockHash))
 
     val fakeGenesisBlocks = if (genesisBlocks.size > 0) List.empty else List("alignment_node")
@@ -131,10 +131,10 @@ object GraphzGenerator {
 
     val validators = blockInfos
       .map(_.getSummary)
-      .filterNot(_.validatorPublicKey.isEmpty)
+      .filterNot(_.validatorPublicKeyHash.isEmpty)
       .foldMap { b =>
         val blockHash       = hexShort(b.blockHash)
-        val blockSenderHash = hexShort(b.validatorPublicKey)
+        val blockSenderHash = hexShort(b.validatorPublicKeyHash)
         val parents         = b.parentHashes.toList.map(hexShort)
         val justifications = b.justifications
           .map(_.latestBlockHash)

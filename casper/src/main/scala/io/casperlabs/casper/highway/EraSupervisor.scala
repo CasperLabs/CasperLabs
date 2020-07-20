@@ -56,7 +56,7 @@ class EraSupervisor[F[_]: Concurrent: Timer: Log: Metrics: EraStorage: BlockRela
       hash    = block.blockHash.show
       instant = conf.toInstant(Ticks(header.roundId))
       _ <- Log[F].info(
-            s"Handling incoming ${hash -> "message"} from ${header.validatorPublicKey.show -> "validator"} in ${header.roundId -> "round"} $instant ${header.keyBlockHash.show -> "era"}"
+            s"Handling incoming ${hash -> "message"} from ${header.validatorPublicKeyHash.show -> "validator"} in ${header.roundId -> "round"} $instant ${header.keyBlockHash.show -> "era"}"
           )
       entry <- load(header.keyBlockHash)
 

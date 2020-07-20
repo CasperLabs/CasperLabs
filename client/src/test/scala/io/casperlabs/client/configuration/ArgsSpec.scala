@@ -51,8 +51,6 @@ class ArgsSpec extends FlatSpec with Matchers {
 
       {"name" : "hashKey", "value" : {"cl_type" : { "simple_type" : "KEY" }, "value" : {"key": {"hash": {"hash": "$addressHex"}}}}},
 
-      {"name" : "localKey", "value" : {"cl_type" : { "simple_type" : "KEY" }, "value" : {"key": {"local": {"hash": "$addressHex"}}}}},
-
       {"name" : "urefKey", "value" : {"cl_type" : { "simple_type" : "KEY" }, "value" : {"key": {"uref": {"uref": "$addressHex", "access_rights": 5}}}}},
 
       {"name" : "uref", "value" : {"cl_type" : { "simple_type" : "UREF" }, "value" : {"uref": {"uref": "$addressHex", "access_rights": 5}}}},
@@ -173,7 +171,7 @@ class ArgsSpec extends FlatSpec with Matchers {
 
     val args = Args.fromJson(json).fold(e => fail(e), identity)
 
-    args should have size 28
+    args should have size 27
     args(0) shouldBe Arg("bool").withValue(
       dsl.instances.bool(bool)
     )
@@ -223,15 +221,7 @@ class ArgsSpec extends FlatSpec with Matchers {
           .some
       )
     )
-    args(13) shouldBe Arg("localKey").withValue(
-      state.CLValueInstance(
-        clType = dsl.types.key.some,
-        value = dsl.values
-          .key(state.Key().withLocal(state.Key.Local(ByteString.copyFrom(address))))
-          .some
-      )
-    )
-    args(14) shouldBe Arg("urefKey").withValue(
+    args(13) shouldBe Arg("urefKey").withValue(
       state.CLValueInstance(
         clType = dsl.types.key.some,
         value = dsl.values
@@ -246,7 +236,7 @@ class ArgsSpec extends FlatSpec with Matchers {
           .some
       )
     )
-    args(15) shouldBe Arg("uref").withValue(
+    args(14) shouldBe Arg("uref").withValue(
       state.CLValueInstance(
         clType = dsl.types.uref.some,
         value = dsl.values
@@ -257,29 +247,29 @@ class ArgsSpec extends FlatSpec with Matchers {
           .some
       )
     )
-    args(16) shouldBe Arg("maybe_u64").withValue(
+    args(15) shouldBe Arg("maybe_u64").withValue(
       dsl.instances.option.none(dsl.types.u64)
     )
-    args(17) shouldBe Arg("maybe_u64").withValue(
+    args(16) shouldBe Arg("maybe_u64").withValue(
       dsl.instances.option.some(dsl.instances.u64(long))
     )
-    args(18) shouldBe Arg("list_i32").withValue(
+    args(17) shouldBe Arg("list_i32").withValue(
       dsl.instances.list(
         List(0, 1, 2, 3).map(dsl.instances.i32)
       )
     )
-    args(19) shouldBe Arg("fixed_list_str").withValue(
+    args(18) shouldBe Arg("fixed_list_str").withValue(
       dsl.instances.fixedList(
         List("A", "B", "C").map(dsl.instances.string)
       )
     )
-    args(20) shouldBe Arg("err_string").withValue(
+    args(19) shouldBe Arg("err_string").withValue(
       dsl.instances.result.err(dsl.instances.string(string), dsl.types.bool)
     )
-    args(21) shouldBe Arg("ok_bool").withValue(
+    args(20) shouldBe Arg("ok_bool").withValue(
       dsl.instances.result.ok(dsl.instances.bool(bool), dsl.types.string)
     )
-    args(22) shouldBe Arg("map_string_i32").withValue(
+    args(21) shouldBe Arg("map_string_i32").withValue(
       dsl.instances.map(
         List("A", "B", "C")
           .map(dsl.instances.string)
@@ -288,19 +278,19 @@ class ArgsSpec extends FlatSpec with Matchers {
           )
       )
     )
-    args(23) shouldBe Arg("tuple1").withValue(
+    args(22) shouldBe Arg("tuple1").withValue(
       dsl.instances.tuple1(dsl.instances.u8(byte))
     )
-    args(24) shouldBe Arg("tuple2").withValue(
+    args(23) shouldBe Arg("tuple2").withValue(
       dsl.instances.tuple2(dsl.instances.u8(byte), dsl.instances.u32(int))
     )
-    args(25) shouldBe Arg("tuple3").withValue(
+    args(24) shouldBe Arg("tuple3").withValue(
       dsl.instances.tuple3(dsl.instances.u8(byte), dsl.instances.u32(int), dsl.instances.u64(long))
     )
-    args(26) shouldBe Arg("raw_bytes").withValue(
+    args(25) shouldBe Arg("raw_bytes").withValue(
       dsl.instances.bytes(address)
     )
-    args(27) shouldBe Arg("raw_bytes_fixed").withValue(
+    args(26) shouldBe Arg("raw_bytes_fixed").withValue(
       dsl.instances.bytesFixedLength(address)
     )
   }
@@ -322,7 +312,6 @@ class ArgsSpec extends FlatSpec with Matchers {
       {"name": "my_hash", "value": {"key": {"hash": {"hash": "${hex_account}"}}}},
       {"name": "my_address", "value": {"key": {"address": {"account": "${hex_account}"}}}},
       {"name": "my_uref", "value": {"key": {"uref": {"uref": "${hex_account}", "access_rights": 5}}}},
-      {"name": "my_local", "value": {"key": {"local": {"hash": "${hex_account}"}}}},
       {"name": "my_int_value", "value": {"int_value": ${int_value}}},
       {"name": "my_int_list", "value": {"int_list": {"values": [0, 1, 2]}}},
       {"name": "my_string_list", "value": {"string_list": {"values": ["A", "B", "C"]}}}
@@ -333,7 +322,7 @@ class ArgsSpec extends FlatSpec with Matchers {
       case Left(error) =>
         fail(error)
       case Right(args) =>
-        args should have size 13
+        args should have size 12
         args(0) shouldBe Arg("my_long_value").withValue(
           dsl.instances.i64(amount)
         )
@@ -383,21 +372,13 @@ class ArgsSpec extends FlatSpec with Matchers {
               .some
           )
         )
-        args(9) shouldBe Arg("my_local").withValue(
-          state.CLValueInstance(
-            clType = dsl.types.key.some,
-            value = dsl.values
-              .key(state.Key().withLocal(state.Key.Local(ByteString.copyFrom(account))))
-              .some
-          )
-        )
-        args(10) shouldBe Arg("my_int_value").withValue(
+        args(9) shouldBe Arg("my_int_value").withValue(
           dsl.instances.i32(int_value)
         )
-        args(11) shouldBe Arg("my_int_list").withValue(
+        args(10) shouldBe Arg("my_int_list").withValue(
           dsl.instances.list(List(0, 1, 2).map(dsl.instances.i32))
         )
-        args(12) shouldBe Arg("my_string_list").withValue(
+        args(11) shouldBe Arg("my_string_list").withValue(
           dsl.instances.list(List("A", "B", "C").map(dsl.instances.string))
         )
     }

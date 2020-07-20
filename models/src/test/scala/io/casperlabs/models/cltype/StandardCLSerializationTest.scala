@@ -50,13 +50,15 @@ object StandardCLSerializationTest {
     }
 
     def toBytes(data: Data): IndexedSeq[Byte] = data match {
-      case Data.SVI(StoredValueInstance.Account(a))  => ToBytes.toBytes(a)
-      case Data.SVI(StoredValueInstance.Contract(c)) => ToBytes.toBytes(c)
-      case Data.SVI(StoredValueInstance.CLValue(v))  => v.toValue.right.get.value
-      case Data.CLT(t)                               => ToBytes.toBytes(t)
-      case Data.CLV(v)                               => ToBytes.toBytes(v)
-      case Data.AR(ar)                               => ToBytes.toBytes(ar)
-      case Data.SV(sv)                               => ToBytes.toBytes(sv)
+      case Data.SVI(StoredValueInstance.Account(a))         => ToBytes.toBytes(a)
+      case Data.SVI(StoredValueInstance.Contract(c))        => ToBytes.toBytes(c)
+      case Data.SVI(StoredValueInstance.ContractWasm(c))    => ToBytes.toBytes(c)
+      case Data.SVI(StoredValueInstance.ContractPackage(c)) => ToBytes.toBytes(c)
+      case Data.SVI(StoredValueInstance.CLValue(v))         => v.toValue.right.get.value
+      case Data.CLT(t)                                      => ToBytes.toBytes(t)
+      case Data.CLV(v)                                      => ToBytes.toBytes(v)
+      case Data.AR(ar)                                      => ToBytes.toBytes(ar)
+      case Data.SV(sv)                                      => ToBytes.toBytes(sv)
     }
 
     def fromBytes(bytes: IndexedSeq[Byte], target: Data): Data = target match {
@@ -67,6 +69,14 @@ object StandardCLSerializationTest {
       case Data.SVI(StoredValueInstance.Contract(_)) =>
         val c = FromBytes.deserialize(Contract.deserializer, bytes.toArray).right.get
         Data.SVI(StoredValueInstance.Contract(c))
+
+      case Data.SVI(StoredValueInstance.ContractWasm(_)) =>
+        val c = FromBytes.deserialize(ContractWasm.deserializer, bytes.toArray).right.get
+        Data.SVI(StoredValueInstance.ContractWasm(c))
+
+      case Data.SVI(StoredValueInstance.ContractPackage(_)) =>
+        val c = FromBytes.deserialize(ContractPackage.deserializer, bytes.toArray).right.get
+        Data.SVI(StoredValueInstance.ContractPackage(c))
 
       case Data.SVI(StoredValueInstance.CLValue(v)) =>
         val deserializer = CLValueInstance.deserializer(v.clType)
@@ -245,12 +255,45 @@ object StandardCLSerializationTest {
         CLValueInstance.Tuple3(v0, v1, v2)
     }
 
+    def parseEntryPointAccess(data: Tbl): EntryPointAccess =
+      getString(data, "variant") match {
+        case "PUBLIC" => EntryPointAccess.Public()
+        case "GROUPS" => {
+          val groups = getArr(data, "groups").map { t =>
+            getString(t, "label")
+          }
+          EntryPointAccess.Groups(groups)
+        }
+      }
+
+    def parseEntryPoint(data: Tbl): EntryPoint = {
+      val name = getString(data, "name");
+      val args = getArr(data, "args").map { t =>
+        val name   = getString(t, "name")
+        val clType = parseCLType(getTable(t, "type"))
+        (name, clType)
+      }.toMap
+      val ret    = parseCLType(getTable(data, "ret"))
+      val access = parseEntryPointAccess(getTable(data, "access"))
+      val entryPointType = getString(data, "entry_point_type") match {
+        case "SESSION"  => EntryPointType.Session
+        case "CONTRACT" => EntryPointType.Contract
+      }
+      EntryPoint(name, args, ret, access, entryPointType)
+    }
+
     def parseContract(data: Tbl): Contract = {
-      val bytes = readHex(getString(data, "bytes"))
+      val contractPackageHash = readHex(getString(data, "contract_package_hash"))
+      val contractWasmHash    = readHex(getString(data, "contract_hash"))
       val namedKeys = getArr(data, "named_keys").map { t =>
         val k = getString(t, "key")
         val v = parseKey(getTable(t, "value"))
         (k, v)
+      }.toMap
+      val entryPoints = getArr(data, "entry_points").map { t =>
+        // val k = getString(t, "key");
+        val v = parseEntryPoint(t);
+        (getString(t, "name"), v)
       }.toMap
       val protocolVersionData = getTable(data, "protocol_version")
       val protocolVersion = SemVer(
@@ -258,7 +301,13 @@ object StandardCLSerializationTest {
         getNumber(protocolVersionData, "minor").toInt,
         getNumber(protocolVersionData, "patch").toInt
       )
-      Contract(bytes, namedKeys, protocolVersion)
+      Contract(
+        ByteArray32(contractPackageHash).get,
+        ByteArray32(contractWasmHash).get,
+        namedKeys,
+        entryPoints,
+        protocolVersion
+      )
     }
 
     def parseAccount(data: Tbl): Account = {
@@ -297,12 +346,6 @@ object StandardCLSerializationTest {
       case key if key == "hash" =>
         val address = readHex(getString(data, key))
         Key.Hash(ByteArray32(address).get)
-
-      case key if key == "local" =>
-        val localData = getTable(data, key)
-        val seed      = readHex(getString(localData, "seed"))
-        val hash      = readHex(getString(localData, "hash"))
-        Key.Local(ByteArray32(seed).get, ByteArray32(hash).get)
 
       case key if key == "uref_value" =>
         val urefData = getTable(data, key)

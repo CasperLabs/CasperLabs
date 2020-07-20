@@ -3,31 +3,24 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
-use contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use types::{ApiError, Key};
+use contract::contract_api::runtime;
+use types::contracts::NamedKeys;
 
-enum Arg {
-    InitialNamedKeys = 0,
-    NewNamedKeys,
-}
+const ARG_INITIAL_NAMED_KEYS: &str = "initial_named_args";
+const ARG_NEW_NAMED_KEYS: &str = "new_named_keys";
 
 #[no_mangle]
 pub extern "C" fn call() {
     // Account starts with two known named keys: mint uref & pos uref.
-    let expected_initial_named_keys: BTreeMap<String, Key> =
-        runtime::get_arg(Arg::InitialNamedKeys as u32)
-            .unwrap_or_revert_with(ApiError::MissingArgument)
-            .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let expected_initial_named_keys: NamedKeys = runtime::get_named_arg(ARG_INITIAL_NAMED_KEYS);
 
     let actual_named_keys = runtime::list_named_keys();
     assert_eq!(expected_initial_named_keys, actual_named_keys);
 
     // Add further named keys and assert that each is returned in `list_named_keys()`.
-    let new_named_keys: BTreeMap<String, Key> = runtime::get_arg(Arg::NewNamedKeys as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let new_named_keys: NamedKeys = runtime::get_named_arg(ARG_NEW_NAMED_KEYS);
     let mut expected_named_keys = expected_initial_named_keys;
 
     for (key, value) in new_named_keys {

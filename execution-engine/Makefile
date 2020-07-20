@@ -14,7 +14,6 @@ IT_RES_DIR = $(realpath $(EE_DIR)/../integration-testing/resources)
 # Directory names should match crate names
 BENCH       = $(shell find ./contracts/bench       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CLIENT      = $(shell find ./contracts/client      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-EXAMPLE     = $(shell find ./contracts/examples    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 EXPLORER    = $(shell find ./contracts/explorer    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 INTEGRATION = $(shell find ./contracts/integration -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 PROFILING   = $(shell find ./contracts/profiling   -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
@@ -24,7 +23,6 @@ TEST        = $(shell find ./contracts/test        -mindepth 1 -maxdepth 1 -type
 
 BENCH_CONTRACTS     := $(patsubst %, build-contract-rs/%, $(BENCH))
 CLIENT_CONTRACTS    := $(patsubst %, build-contract-rs/%, $(CLIENT))
-EXAMPLE_CONTRACTS   := $(patsubst %, build-contract-rs/%, $(EXAMPLE))
 EXPLORER_CONTRACTS  := $(patsubst %, build-contract-rs/%, $(EXPLORER))
 PROFILING_CONTRACTS := $(patsubst %, build-contract-rs/%, $(PROFILING))
 SRE_CONTRACTS       := $(patsubst %, build-contract-rs/%, $(SRE))
@@ -33,28 +31,18 @@ TEST_CONTRACTS      := $(patsubst %, build-contract-rs/%, $(TEST))
 # AssemblyScript Contracts
 CLIENT_CONTRACTS_AS  = $(shell find ./contracts-as/client   -mindepth 1 -maxdepth 1 -type d)
 TEST_CONTRACTS_AS    = $(shell find ./contracts-as/test     -mindepth 1 -maxdepth 1 -type d)
-EXAMPLE_CONTRACTS_AS = $(shell find ./contracts-as/examples -mindepth 1 -maxdepth 1 -type d)
 
 CLIENT_CONTRACTS_AS  := $(patsubst %, build-contract-as/%, $(CLIENT_CONTRACTS_AS))
 TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
-EXAMPLE_CONTRACTS_AS := $(patsubst %, build-contract-as/%, $(EXAMPLE_CONTRACTS_AS))
 
 INTEGRATION += \
-	bonding-call \
-	counter-call \
-	counter-define \
 	endless-loop \
-	hello-name-call \
-	hello-name-define \
 	local-state \
-	mailing-list-call \
-	mailing-list-define \
 	modified-system-upgrader \
 	pos-bonding \
 	remove-associated-key \
 	standard-payment \
-	transfer-to-account-u512 \
-	unbonding-call
+	transfer-to-account-u512
 
 HIGHWAY_CONTRACTS += \
 	pos-install \
@@ -71,6 +59,21 @@ TOOL_TARGET_DIR           = cargo-casperlabs/target
 TOOL_WASM_DIR             = cargo-casperlabs/wasm
 ENGINE_CORE_TARGET_DIR    = engine-core/target
 ENGINE_CORE_WASM_DIR      = engine-core/wasm
+
+CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
+	contract \
+	engine-core \
+	engine-grpc-server \
+	engine-shared \
+	engine-storage \
+	engine-test-support \
+	engine-wasm-prep \
+	mint \
+	proof-of-stake \
+	standard-payment \
+	types
+
+CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
 
 .PHONY: all
 all: build build-contracts
@@ -102,7 +105,6 @@ build-system-contract-featured-rs/%:
 build-contracts-rs: \
 	$(BENCH_CONTRACTS) \
 	$(CLIENT_CONTRACTS) \
-	$(EXAMPLE_CONTRACTS) \
 	$(EXPLORER_CONTRACTS) \
 	$(INTEGRATION_CONTRACTS) \
 	$(PROFILING_CONTRACTS) \
@@ -114,16 +116,12 @@ build-contracts-enable-bonding-rs: FEATURES := enable-bonding
 build-contracts-enable-bonding-rs: \
 	$(BENCH_CONTRACTS) \
 	$(CLIENT_CONTRACTS) \
-	$(EXAMPLE_CONTRACTS) \
 	$(EXPLORER_CONTRACTS) \
 	$(INTEGRATION_CONTRACTS) \
 	$(PROFILING_CONTRACTS) \
 	$(SRE_CONTRACTS) \
 	$(SYSTEM_CONTRACTS_FEATURED) \
 	$(TEST_CONTRACTS)
-
-.PHONY: build-example-contracts
-build-example-contracts: $(EXAMPLE_CONTRACTS)
 
 .PHONY: build-integration-contracts
 build-integration-contracts: $(INTEGRATION_CONTRACTS)
@@ -189,8 +187,15 @@ audit:
 	$(CARGO) generate-lockfile
 	$(CARGO) audit
 
+.PHONY: build-docs-stable-rs
+build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
+
+doc-stable/%:
+	$(CARGO) +stable doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --features "no-unstable-features" --no-deps
+
 .PHONY: check-rs
 check-rs: \
+	build-docs-stable-rs \
 	build \
 	check-format \
 	lint \
@@ -263,13 +268,17 @@ setup-rs: rust-toolchain
 	$(RUSTUP) toolchain install $(RUST_TOOLCHAIN)
 	$(RUSTUP) target add --toolchain $(RUST_TOOLCHAIN) wasm32-unknown-unknown
 
+.PHONY: setup-stable-rs
+setup-stable-rs: RUST_TOOLCHAIN := stable
+setup-stable-rs: setup-rs
+
 .PHONY: setup-nightly-rs
 setup-nightly-rs: RUST_TOOLCHAIN := nightly
 setup-nightly-rs: setup-rs
 
 .PHONY: setup-as
 setup-as: contract-as/package.json
-	cd contract-as && $(NPM) install
+	cd contract-as && $(NPM) ci
 
 .PHONY: setup
 setup: setup-rs setup-as

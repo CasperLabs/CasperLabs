@@ -65,8 +65,8 @@ class FinalityDetectorVotingMatrix[F[_]: Concurrent: Log: AncestorsStorage] priv
                           )
                         else
                           for {
-                            lfb        <- dag.lookupBlockUnsafe(latestFinalizedBlock)
-                            validators = lfb.weightMap.keySet
+                            lfb                                          <- dag.lookupBlockUnsafe(latestFinalizedBlock)
+                            validators: Set[DagRepresentation.Validator] = lfb.weightMap.keySet
                             panorama <- FinalityDetectorUtil
                                          .panoramaOfBlockByValidators[F](
                                            dag,
@@ -95,6 +95,7 @@ class FinalityDetectorVotingMatrix[F[_]: Concurrent: Log: AncestorsStorage] priv
                         .buildString(latestFinalizedBlock)                   -> "latestFinalizedBlock"}"
                     )
                     .void
+                    .whenA(message.parentBlock != latestFinalizedBlock)
               }
         } yield ()
       )

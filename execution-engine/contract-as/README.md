@@ -80,7 +80,7 @@ export function call(): void {
     Error.fromErrorCode(ErrorCode.None).revert(); // ErrorCode: 1
 }
 ```
-If you prefer a more complicated first contract, you can look at example contracts on the [CasperLabs](https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/contracts-as/examples) github repository for inspiration.
+If you prefer a more complicated first contract, you can look at client contracts on the [CasperLabs](https://github.com/CasperLabs/CasperLabs/tree/master/execution-engine/contracts-as/client) github repository for inspiration.
 
 ### Compile to wasm
 To compile your contract to wasm, use npm to run the asbuild script from your project root.

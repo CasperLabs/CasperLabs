@@ -7,9 +7,10 @@ use contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, URef, U512};
+use types::{ApiError, RuntimeArgs, URef, U512};
 
 const GET_PAYMENT_PURSE: &str = "get_payment_purse";
+pub const ARG_AMOUNT: &str = "amount";
 
 struct StandardPaymentContract;
 
@@ -33,7 +34,8 @@ impl MintProvider for StandardPaymentContract {
 impl ProofOfStakeProvider for StandardPaymentContract {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
         let pos_pointer = system::get_proof_of_stake();
-        let payment_purse = runtime::call_contract(pos_pointer, (GET_PAYMENT_PURSE,));
+        let payment_purse =
+            runtime::call_contract(pos_pointer, GET_PAYMENT_PURSE, RuntimeArgs::default());
         Ok(payment_purse)
     }
 }
@@ -43,9 +45,7 @@ impl StandardPayment for StandardPaymentContract {}
 pub fn delegate() {
     let mut standard_payment_contract = StandardPaymentContract;
 
-    let amount: U512 = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
     standard_payment_contract.pay(amount).unwrap_or_revert();
 }

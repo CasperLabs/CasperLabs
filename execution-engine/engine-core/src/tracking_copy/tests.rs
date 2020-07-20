@@ -1,20 +1,20 @@
-use std::{cell::Cell, collections::BTreeMap, iter, rc::Rc};
+use std::{cell::Cell, iter, rc::Rc};
 
 use assert_matches::assert_matches;
-use proptest::{collection::vec, prelude::*};
+use proptest::prelude::*;
 
 use engine_shared::{
     account::{Account, AssociatedKeys},
-    contract::Contract,
     newtypes::CorrelationId,
     stored_value::{gens::stored_value_arb, StoredValue},
     transform::Transform,
 };
 use engine_storage::global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader};
 use types::{
-    account::{PublicKey, Weight, ED25519_LENGTH},
+    account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
+    contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Key, ProtocolVersion, URef,
+    AccessRights, CLValue, Contract, EntryPoints, Key, ProtocolVersion, URef,
 };
 
 use super::{
@@ -44,7 +44,7 @@ impl CountingDb {
 }
 
 impl StateReader<Key, StoredValue> for CountingDb {
-    type Error = !;
+    type Error = String;
     fn read(
         &self,
         _correlation_id: CorrelationId,
@@ -175,13 +175,13 @@ fn tracking_copy_add_i32() {
 
 #[test]
 fn tracking_copy_add_named_key() {
-    let zero_public_key = PublicKey::ed25519_from([0u8; ED25519_LENGTH]);
+    let zero_account_hash = AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]);
     let correlation_id = CorrelationId::new();
     // DB now holds an `Account` so that we can test adding a `NamedKey`
-    let associated_keys = AssociatedKeys::new(zero_public_key, Weight::new(1));
+    let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
     let account = Account::new(
-        zero_public_key,
-        BTreeMap::new(),
+        zero_account_hash,
+        NamedKeys::new(),
         URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
@@ -196,7 +196,7 @@ fn tracking_copy_add_named_key() {
     let named_key = StoredValue::CLValue(CLValue::from_t((name1.clone(), u1)).unwrap());
     let name2 = "test2".to_string();
     let other_named_key = StoredValue::CLValue(CLValue::from_t((name2.clone(), u2)).unwrap());
-    let mut map: BTreeMap<String, Key> = BTreeMap::new();
+    let mut map = NamedKeys::new();
     map.insert(name1, u1);
 
     // adding the wrong type should fail
@@ -311,14 +311,19 @@ proptest! {
         v in stored_value_arb(), // value in contract state
         name in "\\PC*", // human-readable name for state
         missing_name in "\\PC*",
-        body in vec(any::<u8>(), 1..1000), // contract body
         hash in u8_slice_32(), // hash for contract key
     ) {
         let correlation_id = CorrelationId::new();
-        let mut named_keys = BTreeMap::new();
+        let mut named_keys = NamedKeys::new();
         named_keys.insert(name.clone(), k);
         let contract =
-            StoredValue::Contract(Contract::new(body, named_keys, ProtocolVersion::V1_0_0));
+            StoredValue::Contract(Contract::new(
+            [2; 32],
+            [3; 32],
+            named_keys,
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
+        ));
         let contract_key = Key::Hash(hash);
 
         let (gs, root_hash) = InMemoryGlobalState::from_pairs(
@@ -347,8 +352,8 @@ proptest! {
         v in stored_value_arb(), // value in account state
         name in "\\PC*", // human-readable name for state
         missing_name in "\\PC*",
-        pk in public_key_arb(), // account public key
-        address in public_key_arb(), // address for account key
+        pk in account_hash_arb(), // account hash
+        address in account_hash_arb(), // address for account hash
     ) {
         let correlation_id = CorrelationId::new();
         let named_keys = iter::once((name.clone(), k)).collect();
@@ -388,22 +393,26 @@ proptest! {
         v in stored_value_arb(), // value in contract state
         state_name in "\\PC*", // human-readable name for state
         contract_name in "\\PC*", // human-readable name for contract
-        pk in public_key_arb(), // account public key
-        address in public_key_arb(), // address for account key
-        body in vec(any::<u8>(), 1..1000), //contract body
+        pk in account_hash_arb(), // account hash
+        address in account_hash_arb(), // address for account hash
         hash in u8_slice_32(), // hash for contract key
     ) {
         let correlation_id = CorrelationId::new();
         // create contract which knows about value
-        let mut contract_named_keys = BTreeMap::new();
+        let mut contract_named_keys = NamedKeys::new();
         contract_named_keys.insert(state_name.clone(), k);
-        let contract = StoredValue::Contract(
-            Contract::new(body, contract_named_keys, ProtocolVersion::V1_0_0)
-        );
+        let contract =
+            StoredValue::Contract(Contract::new(
+            [2; 32],
+            [3; 32],
+            contract_named_keys,
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
+        ));
         let contract_key = Key::Hash(hash);
 
         // create account which knows about contract
-        let mut account_named_keys = BTreeMap::new();
+        let mut account_named_keys = NamedKeys::new();
         account_named_keys.insert(contract_name.clone(), contract_key);
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
@@ -424,7 +433,9 @@ proptest! {
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(contract_name, state_name);
-        if let Ok(TrackingCopyQueryResult::Success(result)) = tc.query(correlation_id, account_key, &path) {
+
+        let result =  tc.query(correlation_id, account_key, &path);
+        if let Ok(TrackingCopyQueryResult::Success(result)) = result {
             assert_eq!(v, result);
         } else {
             panic!("Query failed when it should not have!");
@@ -488,13 +499,18 @@ fn query_for_circular_references_should_fail() {
 
     // create contract with this self-referential key in its named keys, and also a key referring to
     // itself in its named keys.
-    let contract_key = Key::URef(URef::new([1; 32], AccessRights::READ));
+    let contract_key = Key::Hash([1; 32]);
     let contract_name = "contract".to_string();
-    let mut named_keys = BTreeMap::new();
+    let mut named_keys = NamedKeys::new();
     named_keys.insert(key_name.clone(), cl_value_key);
     named_keys.insert(contract_name.clone(), contract_key);
-    let contract =
-        StoredValue::Contract(Contract::new(vec![], named_keys, ProtocolVersion::V1_0_0));
+    let contract = StoredValue::Contract(Contract::new(
+        [2; 32],
+        [3; 32],
+        named_keys,
+        EntryPoints::default(),
+        ProtocolVersion::V1_0_0,
+    ));
 
     let correlation_id = CorrelationId::new();
     let (global_state, root_hash) = InMemoryGlobalState::from_pairs(

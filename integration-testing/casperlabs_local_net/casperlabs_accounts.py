@@ -4,9 +4,10 @@ from contextlib import contextmanager
 from typing import Union, List
 from pathlib import Path
 import base64
+from pyblake2 import blake2b
 
 from casperlabs_local_net.common import resources_path
-from casperlabs_client.crypto import read_pem_key
+from casperlabs_client.crypto import read_pem_key, blake2b_hash
 
 
 def is_valid_account(account_id: Union[int, str]) -> bool:

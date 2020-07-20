@@ -4,8 +4,9 @@ version = "0.1.0"
 authors = ["Michał Papierski <michal@papierski.net>"]
 edition = "2018"
 
-[lib]
-crate-type = ["cdylib"]
+[[bin]]
+name = "ee_771_regression"
+path = "src/main.rs"
 bench = false
 doctest = false
 test = false

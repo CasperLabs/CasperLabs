@@ -9,17 +9,15 @@ use contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use types::{ApiError, URef, U512};
+use types::{URef, U512};
+
+const ARG_AMOUNT: &str = "amount";
+const ARG_DESTINATION: &str = "destination";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let amount: U512 = runtime::get_arg(1)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-
-    let destination_name: String = runtime::get_arg(0)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let destination_name: String = runtime::get_named_arg(ARG_DESTINATION);
 
     let source: URef = account::get_main_purse();
     let destination = system::create_purse();

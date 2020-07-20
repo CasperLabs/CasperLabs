@@ -19,7 +19,7 @@ import io.casperlabs.casper.scalatestcontrib._
 import io.casperlabs.casper.consensus.info.DeployInfo
 import io.casperlabs.casper.util.ProtoUtil
 import io.casperlabs.casper.{EquivocatedBlock, Valid, ValidatorIdentity}
-import io.casperlabs.crypto.Keys.{PrivateKey, PublicKey}
+import io.casperlabs.crypto.Keys, Keys.{PrivateKey, PublicKey}
 import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
 import io.casperlabs.models.Message
 import io.casperlabs.mempool.DeployBuffer
@@ -82,8 +82,8 @@ class MessageExecutorSpec extends FlatSpec with Matchers with Inspectors with Hi
 
     override lazy val bonds = List(
       // Our validators needs to be bonded in Genesis, so the blocks created by them don't get rejected.
-      Bond(thisValidator.publicKey).withStake(state.BigInt("10000")),
-      Bond(otherValidator.publicKey).withStake(state.BigInt("5000"))
+      Bond(thisValidator.publicKeyHash).withStake(state.BigInt("10000")),
+      Bond(otherValidator.publicKeyHash).withStake(state.BigInt("5000"))
     )
 
     // Make a message producer that's supposed to make valid blocks.
@@ -148,7 +148,7 @@ class MessageExecutorSpec extends FlatSpec with Matchers with Inspectors with Hi
         parentLatest <- parentTips.latestMessages
         currLatest   <- currTips.latestMessages
         allLatest    = parentLatest |+| currLatest
-        maybePrev    = currLatest.get(keys.publicKey).map(_.head)
+        maybePrev    = currLatest.get(keys.publicKeyHash).map(_.head)
         nextJRank    = ProtoUtil.nextJRank(allLatest.values.flatten.toSeq)
         now          <- Clock[Task].currentTimeMillis
         second = keys.signBlock {
@@ -159,6 +159,7 @@ class MessageExecutorSpec extends FlatSpec with Matchers with Inspectors with Hi
               .withRoundId(roundId)
               .withJRank(nextJRank)
               .withValidatorPublicKey(keys.publicKey)
+              .withValidatorPublicKeyHash(keys.publicKeyHash)
               .withValidatorBlockSeqNum(maybePrev.map(_.validatorMsgSeqNum + 1).getOrElse(1))
               .withValidatorPrevBlockHash(maybePrev.map(_.messageHash).getOrElse(ByteString.EMPTY))
               .withParentHashes(List(parent.blockHash))
@@ -274,7 +275,6 @@ class MessageExecutorSpec extends FlatSpec with Matchers with Inspectors with Hi
                      first.getHeader.keyBlockHash,
                      first.getHeader.roundId + 2
                    )
-
           _   <- validateAndAdd(blockA)
           eff <- messageExecutor.computeEffects(blockB, false)
           _   = eff._1 shouldBe EquivocatedBlock
@@ -284,7 +284,7 @@ class MessageExecutorSpec extends FlatSpec with Matchers with Inspectors with Hi
 
           dag  <- DagStorage[Task].getRepresentation
           tips <- dag.latestInEra(first.getHeader.keyBlockHash)
-          _    <- tips.getEquivocators shouldBeF Set(otherValidator.publicKey)
+          _    <- tips.getEquivocators shouldBeF Set(otherValidator.publicKeyHash)
         } yield ()
     }
   }
@@ -441,7 +441,7 @@ class MessageExecutorSpec extends FlatSpec with Matchers with Inspectors with Hi
             randomBlock
           else
             randomBlock.withHeader(
-              randomBlock.getHeader.withValidatorPublicKey(validator)
+              randomBlock.getHeader.withValidatorPublicKeyHash(validator)
             )
         }
         val deploys = block.getBody.deploys.map(_.getDeploy).toList

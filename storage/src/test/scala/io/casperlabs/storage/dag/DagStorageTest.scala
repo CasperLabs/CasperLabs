@@ -5,6 +5,7 @@ import com.google.protobuf.ByteString
 import io.casperlabs.casper.consensus.Block.Justification
 import io.casperlabs.casper.consensus.{Block, BlockSummary, Era}
 import io.casperlabs.crypto.codec.Base16
+import io.casperlabs.crypto.Keys.{PublicKeyHash, PublicKeyHashBS}
 import io.casperlabs.models.BlockImplicits._
 import io.casperlabs.models.Message
 import io.casperlabs.storage.era.EraStorage
@@ -65,11 +66,15 @@ trait DagStorageTest
     b.update(_.header.roundId := r)
 
   def setPrev(p: Block)(b: Block): Block =
-    b.update(_.header.validatorPublicKey := p.getHeader.validatorPublicKey)
+    b.update(_.header.validatorPublicKeyHash := p.getHeader.validatorPublicKeyHash)
       .update(_.header.validatorPrevBlockHash := p.blockHash)
       .update(
-        _.header.justifications := Seq(Justification(p.getHeader.validatorPublicKey, p.blockHash))
+        _.header.justifications := Seq(
+          Justification(p.getHeader.validatorPublicKeyHash, p.blockHash)
+        )
       )
+
+  implicit def `ByteString => PublicKeyHashBS`(bs: ByteString): PublicKeyHashBS = PublicKeyHash(bs)
 
   behavior of "DAG Storage"
 
@@ -87,7 +92,7 @@ trait DagStorageTest
               _.update(block => {
                 block.header.justifications := Seq(
                   Justification(
-                    a.getHeader.validatorPublicKey,
+                    a.getHeader.validatorPublicKeyHash,
                     a.blockHash
                   )
                 ) ++ b.getHeader.justifications
@@ -100,7 +105,7 @@ trait DagStorageTest
 
     forAll(genBlockDagFromGenesis) { initial =>
       val validatorsToBlocks = initial
-        .groupBy(_.getHeader.validatorPublicKey)
+        .groupBy(_.getHeader.validatorPublicKeyHash)
         .mapValues(_.toList.sliding(2).flatMap(updateLastMessageByValidator).toList)
 
       // Because we've updated validators' messages so that they always cite its previous block
@@ -171,11 +176,11 @@ trait DagStorageTest
     forAll { (initial: Block, a: Block, c: Block) =>
       withDagStorage { storage =>
         def update(b: Block, validator: ByteString, prevHash: ByteString): Block =
-          b.update(_.header.validatorPublicKey := validator)
+          b.update(_.header.validatorPublicKeyHash := validator)
             .update(_.header.justifications := Seq(Justification(validator, prevHash)))
             .update(_.header.validatorPrevBlockHash := prevHash)
 
-        val validator = initial.validatorPublicKey
+        val validator = initial.validatorPublicKeyHash
         // Block from the same validator that cites its previous block.
         // Should replace `validator_latest_message` entry in the database.
         val nextBlock = update(a, validator, initial.blockHash)
@@ -278,7 +283,7 @@ trait DagStorageTest
                 .flatMap(_.latestMessageHashes)
             }
 
-          val v = blocks.head.getHeader.validatorPublicKey
+          val v = blocks.head.getHeader.validatorPublicKeyHash
 
           for {
             _ <- eras.traverse(storage.addEra)
@@ -352,29 +357,29 @@ trait DagStorageTest
     Given("block1 produced by validator1 with blockHash=lastBlockHash")
     // Must be ignored because block_hash is equal to the lastBlockHash
     val block1 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator1)
+      .update(_.header.validatorPublicKeyHash := validator1)
       .update(_.header.timestamp := lastTimeStamp - 2L)
       .update(_.blockHash := lastBlockHash)
     And("block2 produced by validator1 with blockHash>lastBlockHash")
     // Must be ignored because block_hash is greater than the lastBlockHash
     val block2 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator1)
+      .update(_.header.validatorPublicKeyHash := validator1)
       .update(_.header.timestamp := lastTimeStamp - 2L)
       .update(_.blockHash := ByteString.copyFrom(Base16.decode("ff" * 32)))
     And("block3 produced by validator1 with timestamp>lastTimeStamp")
     // Must be ignored because timestamp is greater than the lastTimeStamp
     val block3 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator1)
+      .update(_.header.validatorPublicKeyHash := validator1)
       .update(_.header.timestamp := lastTimeStamp + 1L)
     And("block4 produced by validator2")
     // Must be ignored because created by a different validator
     val block4 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator2)
+      .update(_.header.validatorPublicKeyHash := validator2)
     And("block5 produced by validator1 with timestamp=lastTimeStamp")
     // Must be included into a response and must be the first because
     // if blocks' timestamp equal to the lastTimeStamp then they're sorted by their hashes in decreasing order
     val block5 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator1)
+      .update(_.header.validatorPublicKeyHash := validator1)
       .update(_.header.timestamp := lastTimeStamp)
       .update(_.blockHash := ByteString.copyFrom(Base16.decode("ff" * 31 + "fd")))
     And(
@@ -383,20 +388,20 @@ trait DagStorageTest
     // Must be included into a response and must be the second because
     // if blocks' timestamp equal to the lastTimeStamp then they're sorted by their hashes in decreasing order
     val block6 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator1)
+      .update(_.header.validatorPublicKeyHash := validator1)
       .update(_.header.timestamp := lastTimeStamp)
       .update(_.blockHash := ByteString.copyFrom(Base16.decode("ff" * 31 + "fc")))
     And("block7 produced by validator1 with timestamp<lastTimeStamp")
     // Must be included into a response and must be the third because
     // its timestamp less than lastTimeStamp
     val block7 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator1)
+      .update(_.header.validatorPublicKeyHash := validator1)
       .update(_.header.timestamp := lastTimeStamp - 1)
     // Must be ignored because we limit for 3 blocks at most and results sorted by decreasing order by timestamps
     // There are block5 and block6 with the timestamp = 1
     And("block8 produced by validator1 with timestamp<lastTimeStamp")
     val block8 = sample(arbitrary[Block])
-      .update(_.header.validatorPublicKey := validator1)
+      .update(_.header.validatorPublicKeyHash := validator1)
       .update(_.header.timestamp := lastTimeStamp - 2L)
     When("dag.getBlockInfosByValidator")
     Then("it should return block5, block6 and block7")
@@ -419,15 +424,15 @@ trait DagStorageTest
                            )
       } yield {
         b1.getSummary.blockHash shouldBe block5.blockHash
-        b1.getSummary.validatorPublicKey shouldBe validator1
+        b1.getSummary.validatorPublicKeyHash shouldBe validator1
         b1.getSummary.timestamp shouldBe lastTimeStamp
 
         b2.getSummary.blockHash shouldBe block6.blockHash
-        b2.getSummary.validatorPublicKey shouldBe validator1
+        b2.getSummary.validatorPublicKeyHash shouldBe validator1
         b2.getSummary.timestamp shouldBe lastTimeStamp
 
         b3.getSummary.blockHash shouldBe block7.blockHash
-        b3.getSummary.validatorPublicKey shouldBe validator1
+        b3.getSummary.validatorPublicKeyHash shouldBe validator1
         b3.getSummary.timestamp shouldBe lastTimeStamp - 1
       }
     }

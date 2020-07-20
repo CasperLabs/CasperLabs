@@ -20,11 +20,11 @@ const MAIN_RS_CONTENTS: &str = r#"#![cfg_attr(
 
 use casperlabs_contract::{
     contract_api::{runtime, storage},
-    unwrap_or_revert::UnwrapOrRevert,
 };
-use casperlabs_types::{ApiError, Key, URef};
+use casperlabs_types::{Key, URef};
 
 const KEY: &str = "special_value";
+const ARG_MESSAGE: &str = "message";
 
 fn store(value: String) {
     // Store `value` under a new unforgeable reference.
@@ -41,13 +41,7 @@ fn store(value: String) {
 #[no_mangle]
 pub extern "C" fn call() {
     // Get the optional first argument supplied to the argument.
-    let value: String = runtime::get_arg(0)
-        // Unwrap the `Option`, returning an error if there was no argument supplied.
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        // Unwrap the `Result` containing the deserialized argument or return an error if there was
-        // a deserialization error.
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-
+    let value: String = runtime::get_named_arg(ARG_MESSAGE);
     store(value);
 }
 "#;

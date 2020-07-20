@@ -12,7 +12,7 @@ mod stakes_provider;
 use core::marker::Sized;
 
 use types::{
-    account::PublicKey,
+    account::AccountHash,
     system_contract_errors::pos::{Error, Result},
     AccessRights, TransferredTo, URef, U512,
 };
@@ -25,7 +25,7 @@ pub use crate::{
 pub trait ProofOfStake:
     MintProvider + QueueProvider + RuntimeProvider + StakesProvider + Sized
 {
-    fn bond(&mut self, validator: PublicKey, amount: U512, source: URef) -> Result<()> {
+    fn bond(&mut self, validator: AccountHash, amount: U512, source: URef) -> Result<()> {
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
         }
@@ -33,6 +33,7 @@ pub trait ProofOfStake:
         let timestamp = self.get_block_time();
         // Transfer `amount` from the `source` purse to PoS internal purse. POS_PURSE is a constant,
         // it is the URef of the proof-of-stake contract's own purse.
+
         self.transfer_purse_to_purse(source, target, amount)
             .map_err(|_| Error::BondTransferFailed)?;
         internal::bond(self, amount, validator, timestamp)?;
@@ -47,7 +48,7 @@ pub trait ProofOfStake:
         Ok(())
     }
 
-    fn unbond(&mut self, validator: PublicKey, maybe_amount: Option<U512>) -> Result<()> {
+    fn unbond(&mut self, validator: AccountHash, maybe_amount: Option<U512>) -> Result<()> {
         let pos_purse = internal::get_bonding_purse(self)?;
         let timestamp = self.get_block_time();
         internal::unbond(self, maybe_amount, validator, timestamp)?;
@@ -79,7 +80,7 @@ pub trait ProofOfStake:
         Ok(maybe_purse.map(|p| p.remove_access_rights()))
     }
 
-    fn finalize_payment(&mut self, amount_spent: U512, account: PublicKey) -> Result<()> {
+    fn finalize_payment(&mut self, amount_spent: U512, account: AccountHash) -> Result<()> {
         internal::finalize_payment(self, amount_spent, account)
     }
 }
@@ -88,7 +89,7 @@ mod internal {
     use alloc::vec::Vec;
 
     use types::{
-        account::PublicKey,
+        account::AccountHash,
         system_contract_errors::pos::{Error, PurseLookupError, Result},
         BlockTime, Key, Phase, URef, U512,
     };
@@ -99,7 +100,7 @@ mod internal {
     };
 
     /// Account used to run system functions (in particular `finalize_payment`).
-    const SYSTEM_ACCOUNT: PublicKey = PublicKey::ed25519_from([0u8; 32]);
+    const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
 
     /// The uref name where the PoS purse is stored. It contains all staked motes, and all unbonded
     /// motes that are yet to be paid out.
@@ -132,7 +133,7 @@ mod internal {
     pub fn bond<P: QueueProvider + StakesProvider>(
         provider: &mut P,
         amount: U512,
-        validator: PublicKey,
+        validator: AccountHash,
         timestamp: BlockTime,
     ) -> Result<()> {
         let mut queue = provider.read_bonding();
@@ -158,7 +159,7 @@ mod internal {
     pub fn unbond<P: QueueProvider + StakesProvider>(
         provider: &mut P,
         maybe_amount: Option<U512>,
-        validator: PublicKey,
+        validator: AccountHash,
         timestamp: BlockTime,
     ) -> Result<()> {
         let mut queue = provider.read_unbonding();
@@ -261,7 +262,7 @@ mod internal {
     pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
         provider: &mut P,
         amount_spent: U512,
-        account: PublicKey,
+        account: AccountHash,
     ) -> Result<()> {
         let caller = provider.get_caller();
         if caller != SYSTEM_ACCOUNT {
@@ -273,6 +274,7 @@ mod internal {
             Some(balance) => balance,
             None => return Err(Error::PaymentPurseBalanceNotFound),
         };
+
         if total < amount_spent {
             return Err(Error::InsufficientPaymentForAmountSpent);
         }
@@ -311,7 +313,7 @@ mod internal {
     pub fn refund_to_account<M: MintProvider>(
         mint_provider: &mut M,
         payment_purse: URef,
-        account: PublicKey,
+        account: AccountHash,
         amount: U512,
     ) -> Result<()> {
         match mint_provider.transfer_purse_to_account(payment_purse, account, amount) {
@@ -326,7 +328,7 @@ mod internal {
 
         use std::{cell::RefCell, iter, thread_local};
 
-        use types::{account::PublicKey, system_contract_errors::pos::Result, BlockTime, U512};
+        use types::{account::AccountHash, system_contract_errors::pos::Result, BlockTime, U512};
 
         use super::{bond, step, unbond, BOND_DELAY, UNBOND_DELAY};
         use crate::{
@@ -341,7 +343,7 @@ mod internal {
             static BONDING: RefCell<Queue> = RefCell::new(Queue(Default::default()));
             static UNBONDING: RefCell<Queue> = RefCell::new(Queue(Default::default()));
             static STAKES: RefCell<Stakes> = RefCell::new(
-                Stakes(iter::once((PublicKey::ed25519_from(KEY1), U512::from(1_000))).collect())
+                Stakes(iter::once((AccountHash::new(KEY1), U512::from(1_000))).collect())
             );
         }
 
@@ -379,7 +381,7 @@ mod internal {
             let expected = Stakes(
                 stakes
                     .iter()
-                    .map(|(key, amount)| (PublicKey::ed25519_from(*key), U512::from(*amount)))
+                    .map(|(key, amount)| (AccountHash::new(*key), U512::from(*amount)))
                     .collect(),
             );
             assert_eq!(Ok(expected), Provider.read());
@@ -391,7 +393,7 @@ mod internal {
             bond(
                 &mut provider,
                 U512::from(500),
-                PublicKey::ed25519_from(KEY2),
+                AccountHash::new(KEY2),
                 BlockTime::new(1),
             )
             .expect("bond validator 2");
@@ -406,7 +408,7 @@ mod internal {
             unbond::<Provider>(
                 &mut provider,
                 Some(U512::from(500)),
-                PublicKey::ed25519_from(KEY1),
+                AccountHash::new(KEY1),
                 BlockTime::new(2),
             )
             .expect("partly unbond validator 1");

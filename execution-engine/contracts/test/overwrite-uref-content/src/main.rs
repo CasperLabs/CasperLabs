@@ -1,13 +1,10 @@
 #![no_std]
 #![no_main]
 
-use contract::{
-    contract_api::{runtime, storage},
-    unwrap_or_revert::UnwrapOrRevert,
-};
+use contract::contract_api::{runtime, storage};
 use types::{AccessRights, ApiError, URef};
 
-const CONTRACT_UREF: u32 = 0;
+const ARG_CONTRACT_UREF: &str = "contract_uref";
 
 #[repr(u16)]
 enum Error {
@@ -18,9 +15,7 @@ const REPLACEMENT_DATA: &str = "bawitdaba";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let uref: URef = runtime::get_arg(CONTRACT_UREF)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
+    let uref: URef = runtime::get_named_arg(ARG_CONTRACT_UREF);
 
     let is_valid = runtime::is_valid_uref(uref);
     if !is_valid {

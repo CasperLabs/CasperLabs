@@ -6,7 +6,7 @@ edition = "2018"
 
 [[bin]]
 name = "transfer_purse_to_account"
-path = "src/main.rs"
+path = "src/bin/main.rs"
 bench = false
 doctest = false
 test = false

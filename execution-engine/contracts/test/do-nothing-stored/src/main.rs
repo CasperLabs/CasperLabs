@@ -3,60 +3,45 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::String};
+use alloc::{string::ToString, vec::Vec};
 
-use contract::{
-    contract_api::{runtime, storage},
-    unwrap_or_revert::UnwrapOrRevert,
+use contract::contract_api::{runtime, storage};
+use types::{
+    contracts::{EntryPoint, EntryPoints},
+    CLType, EntryPointAccess, EntryPointType,
 };
-use types::{ApiError, Key};
 
-const CONTRACT_NAME: &str = "do_nothing_stored";
-const DESTINATION_HASH: &str = "hash";
-const DESTINATION_UREF: &str = "uref";
 const ENTRY_FUNCTION_NAME: &str = "delegate";
-
-#[repr(u16)]
-enum Error {
-    UnknownDestination = 1,
-}
-
-impl Into<ApiError> for Error {
-    fn into(self) -> ApiError {
-        ApiError::User(self as u16)
-    }
-}
-
-enum Arg {
-    Destination = 0,
-}
+const HASH_KEY_NAME: &str = "do_nothing_hash";
+const PACKAGE_HASH_KEY_NAME: &str = "do_nothing_package_hash";
+const ACCESS_KEY_NAME: &str = "do_nothing_access";
+const CONTRACT_VERSION: &str = "contract_version";
 
 #[no_mangle]
 pub extern "C" fn delegate() {}
 
-fn store_at_hash() -> Key {
-    let named_keys = BTreeMap::new();
-    let pointer = storage::store_function_at_hash(ENTRY_FUNCTION_NAME, named_keys);
-    pointer.into()
-}
-
-fn store_at_uref() -> Key {
-    storage::store_function(ENTRY_FUNCTION_NAME, BTreeMap::new())
-        .into_uref()
-        .unwrap_or_revert_with(ApiError::UnexpectedContractRefVariant)
-        .into()
-}
-
 #[no_mangle]
 pub extern "C" fn call() {
-    let destination: String = runtime::get_arg(Arg::Destination as u32)
-        .unwrap_or_revert_with(ApiError::MissingArgument)
-        .unwrap_or_revert_with(ApiError::InvalidArgument);
-
-    let key = match destination.as_str() {
-        DESTINATION_HASH => store_at_hash(),
-        DESTINATION_UREF => store_at_uref(),
-        _ => runtime::revert(Error::UnknownDestination),
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
+        let entry_point = EntryPoint::new(
+            ENTRY_FUNCTION_NAME.to_string(),
+            Vec::new(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Contract,
+        );
+        entry_points.add_entry_point(entry_point);
+        entry_points
     };
-    runtime::put_key(CONTRACT_NAME, key);
+
+    let (contract_hash, contract_version) = storage::new_contract(
+        entry_points,
+        None,
+        Some(PACKAGE_HASH_KEY_NAME.to_string()),
+        Some(ACCESS_KEY_NAME.to_string()),
+    );
+
+    runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
+    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
 }

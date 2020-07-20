@@ -6,6 +6,7 @@ import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
 import org.scalatest.{AppendedClues, BeforeAndAfterEach, FunSpec, Matchers}
 
 import scala.util.Random
+import io.casperlabs.crypto.hash.Blake2b256
 
 class Ed25519Test extends FunSpec with Matchers with BeforeAndAfterEach with AppendedClues {
   describe("Ed25519") {
@@ -76,6 +77,20 @@ class Ed25519Test extends FunSpec with Matchers with BeforeAndAfterEach with App
       Random.nextBytes(data)
       val signature = Ed25519.sign(data, sec)
       Ed25519.verify(data, signature, pub) shouldBe true
+    }
+
+    it("calculates the public key hash") {
+      val (_, pk) = Ed25519.newKeyPair
+      val name    = "ED25519".getBytes
+      val sep     = Base16.decode("00")
+      val bytes   = name ++ sep ++ pk
+      val hash    = Blake2b256.hash(bytes)
+
+      Ed25519.publicKeyHash(pk) shouldBe hash
+    }
+
+    it("returns empty hash for an empty key") {
+      Ed25519.publicKeyHash(PublicKey(Array.empty[Byte])) shouldBe empty
     }
   }
 }

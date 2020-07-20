@@ -4,6 +4,7 @@ import org.scalatest.{FlatSpec, Matchers}
 import io.casperlabs.casper.highway.ForkChoice.Scores
 import com.google.protobuf.ByteString
 import io.casperlabs.models.{Message, Weight}
+import io.casperlabs.crypto.Keys
 import io.casperlabs.storage.BlockHash
 import io.casperlabs.casper.consensus.{BlockSummary, Signature}
 import io.casperlabs.casper.highway.mocks.MockBlockDagStorage
@@ -24,7 +25,7 @@ class ScoresSpec extends FlatSpec with Matchers {
   def newVote(rank: Int, parent: BlockHash): Message.Block =
     Message.Block(
       randomBlockHash,
-      randomBlockHash,
+      randomValidator,
       1L,
       1L,
       randomBlockHash,
@@ -40,6 +41,8 @@ class ScoresSpec extends FlatSpec with Matchers {
     )
 
   def randomBlockHash = ByteString.copyFromUtf8(scala.util.Random.nextString(20))
+  def randomValidator =
+    Keys.PublicKeyHash(ByteString.copyFromUtf8(scala.util.Random.nextString(20)))
 
   implicit def `Int => Weight`(intWeight: Int): Weight = BigInt(intWeight)
 
@@ -77,20 +80,20 @@ class ScoresSpec extends FlatSpec with Matchers {
     assert(nestedScoresMap.totalWeight == scores.sum)
   }
 
-  def createBlock(validator: ByteString, parentHash: ByteString, mainRank: Int): Block =
+  def createBlock(validator: Keys.PublicKeyHashBS, parentHash: ByteString, mainRank: Int): Block =
     Block()
       .withBlockHash(randomBlockHash)
       .update(
         _.header := Block
           .Header()
-          .withValidatorPublicKey(validator)
+          .withValidatorPublicKeyHash(validator)
           .withParentHashes(Seq(parentHash))
           .withMainRank(mainRank.toLong)
       )
 
-  val validatorA = randomBlockHash
-  val validatorB = randomBlockHash
-  val validatorC = randomBlockHash
+  val validatorA = randomValidator
+  val validatorB = randomValidator
+  val validatorC = randomValidator
 
   implicit val byteStringPrettifier = Prettifier {
     case bs: ByteString => PrettyPrinter.buildString(bs)
@@ -99,7 +102,7 @@ class ScoresSpec extends FlatSpec with Matchers {
 
   class TipFixture(blocks: List[Block]) {
     def assertTip(
-        weights: Map[ByteString, Int],
+        weights: Map[Keys.PublicKeyHashBS, Int],
         startBlock: Block,
         expectedTip: Message.Block
     ): Assertion = {
@@ -125,7 +128,7 @@ class ScoresSpec extends FlatSpec with Matchers {
   // When there's no one with majority of votes we pick one with the highest stake.
   // If we still get a tie then we use block hash as tie breaker.
   import io.casperlabs.casper.dag.DagOperations.bigIntByteStringOrdering
-  def tieBreaker(in: List[Message.Block], weights: Map[ByteString, Int]): Message.Block =
+  def tieBreaker(in: List[Message.Block], weights: Map[Keys.PublicKeyHashBS, Int]): Message.Block =
     in.maxBy(b => BigInt(weights(b.validatorId)) -> b.messageHash)(bigIntByteStringOrdering)
 
   it should "return the tip for flat DAG" in {
@@ -210,7 +213,7 @@ class ScoresSpec extends FlatSpec with Matchers {
     val blocks = List(a1, a2, b1, c1, c2, c3)
 
     // No validator on its own has majority of votes.
-    val weights: Map[ByteString, Int] = Map(
+    val weights = Map(
       validatorA -> 10,
       validatorB -> 10,
       validatorC -> 10
@@ -229,7 +232,7 @@ class ScoresSpec extends FlatSpec with Matchers {
     //   \        /
     //    c1-c2-c3 (has 2/3 of the votes)
 
-    val weights: Map[ByteString, Int] = Map(
+    val weights = Map(
       validatorA -> 10,
       validatorB -> 10,
       validatorC -> 10
@@ -265,7 +268,7 @@ class ScoresSpec extends FlatSpec with Matchers {
     val blocks = List(a1, a2, a3, b1, b2)
 
     // No validator on its own has majority of votes.
-    val weights: Map[ByteString, Int] = Map(
+    val weights = Map(
       validatorA -> 10,
       validatorB -> 10
     )
@@ -295,7 +298,7 @@ class ScoresSpec extends FlatSpec with Matchers {
     val blocks = List(g, a1, b1, b2)
 
     // No validator on its own has majority of votes.
-    val weights: Map[ByteString, Int] = Map(
+    val weights = Map(
       validatorA -> 10,
       validatorB -> 10
     )

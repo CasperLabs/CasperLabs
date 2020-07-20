@@ -10,6 +10,7 @@ import io.casperlabs.casper.helper.BlockGenerator._
 import io.casperlabs.casper.helper.BlockUtil.generateValidator
 import io.casperlabs.casper.helper.{BlockGenerator, StorageFixture}
 import io.casperlabs.casper.util.BondingUtil.Bond
+import io.casperlabs.crypto.Keys
 import io.casperlabs.models.Weight
 import io.casperlabs.storage.dag.DagRepresentation
 import monix.eval.Task
@@ -37,7 +38,7 @@ class ForkchoiceTest
       val v2Bond = Bond(v2, 3)
       val bonds  = Seq(v1Bond, v2Bond)
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         b2 <- createAndStoreMessage[Task](
                Seq(genesis.blockHash),
                v2,
@@ -101,7 +102,7 @@ class ForkchoiceTest
       val v3Bond = Bond(v2, 4)
       val bonds  = Seq(v1Bond, v2Bond, v3Bond)
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         b1 <- createAndStoreMessage[Task](
                Seq(genesis.blockHash),
                v3,
@@ -142,7 +143,7 @@ class ForkchoiceTest
       val v2Bond = Bond(v2, 3)
       val bonds  = Seq(v1Bond, v2Bond)
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         b2 <- createAndStoreMessage[Task](
                Seq(genesis.blockHash),
                v2,
@@ -210,7 +211,7 @@ class ForkchoiceTest
       val v3Bond = Bond(v3, 15)
       val bonds  = Seq(v1Bond, v2Bond, v3Bond)
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         b2 <- createAndStoreMessage[Task](
                Seq(genesis.blockHash),
                v2,
@@ -277,7 +278,7 @@ class ForkchoiceTest
       val bonds  = Seq(v1Bond, v2Bond)
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         a1      <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
         a2      <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
         b       <- createAndStoreMessage[Task](Seq(a2.blockHash), v2, bonds, Map(v1 -> a2.blockHash))
@@ -319,7 +320,7 @@ class ForkchoiceTest
       val bonds = Seq(Bond(v1, 10), Bond(v2, 10))
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         // v1 equivocates
         a1                  <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
         a2                  <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
@@ -353,7 +354,7 @@ class ForkchoiceTest
       // so we ended up with tips [B4, B1] instead of [B4]
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         b1 <- createAndStoreMessage[Task](
                Seq(genesis.blockHash),
                v1,
@@ -414,7 +415,7 @@ class ForkchoiceTest
       for {
         n   <- Gen.choose(0, bonds.size)
         idx <- Gen.pick(n, bonds)
-      } yield idx.map(_.validatorPublicKey).toSet
+      } yield idx.map(b => Keys.PublicKeyHash(b.validatorPublicKeyHash)).toSet
 
     val lca = DagOperations
       .latestCommonAncestorsMainParent(
@@ -426,10 +427,11 @@ class ForkchoiceTest
     forAll(equivocatorsGen) { equivocators: Set[Validator] =>
       val weightMap = bonds.map {
         case Bond(validator, stake) =>
-          if (equivocators.contains(validator))
-            (validator, Weight.Zero)
+          val key = Keys.PublicKeyHash(validator)
+          if (equivocators.contains(key))
+            (key, Weight.Zero)
           else {
-            (validator, Weight(stake))
+            (key, Weight(stake))
           }
       }.toMap
       val expectScores = supporterForBlocks.mapValues(_.map(weightMap).sum)
@@ -462,7 +464,7 @@ class ForkchoiceTest
       val v3Bond = Bond(v3, 3)
       val bonds  = Seq(v1Bond, v2Bond, v3Bond)
       for {
-        genesis      <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis      <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         a            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
         b            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v2, bonds)
         c            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v3, bonds)
@@ -511,7 +513,7 @@ class ForkchoiceTest
     val bonds  = Seq(v1Bond, v2Bond, v3Bond)
 
     for {
-      genesis      <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+      genesis      <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
       a            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
       b            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v2, bonds)
       c            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v3, bonds)
@@ -572,7 +574,7 @@ class ForkchoiceTest
       val bonds  = Seq(v1Bond, v2Bond, v3Bond)
 
       for {
-        genesis <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY)
+        genesis <- createAndStoreMessage[Task](Seq(), EmptyValidator)
         a       <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
         b       <- createAndStoreMessage[Task](Seq(genesis.blockHash), v2, bonds)
         c       <- createAndStoreMessage[Task](Seq(genesis.blockHash), v3, bonds)
@@ -634,7 +636,7 @@ class ForkchoiceTest
       val bonds  = Seq(v1Bond, v2Bond, v3Bond)
 
       for {
-        genesis      <- createAndStoreMessage[Task](Seq(), ByteString.EMPTY, bonds)
+        genesis      <- createAndStoreMessage[Task](Seq(), EmptyValidator, bonds)
         a            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v1, bonds)
         b            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v2, bonds)
         c            <- createAndStoreMessage[Task](Seq(genesis.blockHash), v3, bonds)

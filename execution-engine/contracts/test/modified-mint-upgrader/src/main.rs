@@ -1,31 +1,66 @@
 #![no_std]
 #![no_main]
 
-use contract::contract_api::{runtime, system};
-use types::{ApiError, ContractRef};
+extern crate alloc;
 
-#[repr(u16)]
-enum CustomError {
-    ContractPointerHash = 1,
-}
+use alloc::collections::BTreeMap;
+use contract::{
+    contract_api::{runtime, storage, system},
+    unwrap_or_revert::UnwrapOrRevert,
+};
+use types::{contracts::NamedKeys, CLValue, ContractHash, ContractVersion, URef};
 
-pub const EXT_FUNCTION_NAME: &str = "modified_mint_ext";
-
-#[no_mangle]
-pub extern "C" fn modified_mint_ext() {
-    modified_mint::delegate();
-}
+pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";
+pub const POS_EXT_FUNCTION_NAME: &str = "pos_ext";
+pub const STANDARD_PAYMENT_FUNCTION_NAME: &str = "pay";
 
 #[no_mangle]
-pub extern "C" fn call() {
-    let mint_pointer = system::get_mint();
+pub extern "C" fn mint() {
+    modified_mint::mint();
+}
 
-    let mint_uref = match mint_pointer {
-        ContractRef::Hash(_) => {
-            runtime::revert(ApiError::User(CustomError::ContractPointerHash as u16))
-        }
-        ContractRef::URef(uref) => uref,
-    };
+#[no_mangle]
+pub extern "C" fn create() {
+    modified_mint::create();
+}
 
-    runtime::upgrade_contract_at_uref(EXT_FUNCTION_NAME, mint_uref);
+#[no_mangle]
+pub extern "C" fn balance() {
+    modified_mint::balance();
+}
+
+#[no_mangle]
+pub extern "C" fn transfer() {
+    modified_mint::transfer();
+}
+
+fn upgrade_mint() -> (ContractHash, ContractVersion) {
+    const HASH_KEY_NAME: &str = "mint_hash";
+    const ACCESS_KEY_NAME: &str = "mint_access";
+
+    let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY_NAME)
+        .expect("should have mint")
+        .into_hash()
+        .expect("should be hash");
+    let _mint_access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
+        .unwrap_or_revert()
+        .into_uref()
+        .expect("should be uref");
+
+    let entry_points = modified_mint::get_entry_points();
+    let named_keys = NamedKeys::new();
+    storage::add_contract_version(mint_package_hash, entry_points, named_keys)
+}
+
+#[no_mangle]
+pub extern "C" fn upgrade() {
+    let mut upgrades: BTreeMap<ContractHash, ContractHash> = BTreeMap::new();
+
+    {
+        let old_mint_hash = system::get_mint();
+        let (new_mint_hash, _contract_version) = upgrade_mint();
+        upgrades.insert(old_mint_hash, new_mint_hash);
+    }
+
+    runtime::ret(CLValue::from_t(upgrades).unwrap());
 }

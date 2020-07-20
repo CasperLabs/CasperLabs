@@ -14,21 +14,24 @@ pub const UREF_ADDR_LENGTH: usize = 32;
 /// The number of bytes in a serialized [`URef`] where the [`AccessRights`] are not `None`.
 pub const UREF_SERIALIZED_LENGTH: usize = UREF_ADDR_LENGTH + ACCESS_RIGHTS_SERIALIZED_LENGTH;
 
+/// The address of a [`URef`](types::URef) (unforgeable reference) on the network.
+pub type URefAddr = [u8; UREF_ADDR_LENGTH];
+
 /// Represents an unforgeable reference, containing an address in the network's global storage and
 /// the [`AccessRights`] of the reference.
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct URef([u8; UREF_ADDR_LENGTH], AccessRights);
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct URef(URefAddr, AccessRights);
 
 impl URef {
     /// Constructs a [`URef`] from an address and access rights.
-    pub fn new(address: [u8; UREF_ADDR_LENGTH], access_rights: AccessRights) -> Self {
+    pub fn new(address: URefAddr, access_rights: AccessRights) -> Self {
         URef(address, access_rights)
     }
 
     /// Returns the address of this [`URef`].
-    pub fn addr(&self) -> [u8; UREF_ADDR_LENGTH] {
+    pub fn addr(&self) -> URefAddr {
         self.0
     }
 

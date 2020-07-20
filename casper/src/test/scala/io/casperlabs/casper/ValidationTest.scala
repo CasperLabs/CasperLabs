@@ -33,7 +33,7 @@ import io.casperlabs.casper.validation.Errors.{
 }
 import io.casperlabs.casper.validation.{Validation, ValidationImpl}
 import io.casperlabs.catscontrib.{Fs2Compiler, MonadThrowable}
-import io.casperlabs.crypto.Keys.PrivateKey
+import io.casperlabs.crypto.Keys
 import io.casperlabs.crypto.codec.Base16
 import io.casperlabs.crypto.signatures.SignatureAlgorithm.Ed25519
 import io.casperlabs.ipc.ChainSpec.DeployConfig
@@ -96,6 +96,9 @@ class ValidationTest
   val ed25519   = "ed25519"
   val chainName = "testnet"
 
+  def toPublicKeyHash(pk: Keys.PublicKey) =
+    Keys.PublicKeyHash(ByteString.copyFrom(Ed25519.publicKeyHash(pk)))
+
   override def beforeEach(): Unit = {
     log.reset()
     timeEff.reset()
@@ -109,7 +112,7 @@ class ValidationTest
   def createChain[F[_]: MonadThrowable: Time: BlockStorage: DagStorage](
       length: Int,
       bonds: Seq[Bond] = Seq.empty[Bond],
-      creator: Validator = ByteString.EMPTY,
+      creator: Validator = EmptyValidator,
       maybeGenesis: Option[Block] = None
   ): F[List[Block]] =
     (0 until length)
@@ -162,7 +165,7 @@ class ValidationTest
                       justifications = latestMessages
                     )
             latestMessagesNext = latestMessages.updated(
-              bnext.getHeader.validatorPublicKey,
+              Keys.PublicKeyHash(bnext.getHeader.validatorPublicKeyHash),
               bnext.blockHash
             )
           } yield (bnext :: blocks, latestMessagesNext)
@@ -172,7 +175,7 @@ class ValidationTest
 
   def signedBlock(
       block: Block
-  )(implicit sk: PrivateKey): Block =
+  )(implicit sk: Keys.PrivateKey): Block =
     ProtoUtil.signBlock(block, sk, Ed25519)
 
   implicit class ChangeBlockOps(b: Block) {
@@ -188,9 +191,9 @@ class ValidationTest
       // NOTE: blockHash should be recalculated.
       b.withHeader(newHeader)
     }
-    def changeValidator(key: ByteString): Block = {
+    def changeValidator(key: Validator): Block = {
       val header    = b.getHeader
-      val newHeader = header.withValidatorPublicKey(key)
+      val newHeader = header.withValidatorPublicKeyHash(key)
       // NOTE: blockHash should be recalculated.
       b.withHeader(newHeader)
     }
@@ -237,11 +240,12 @@ class ValidationTest
       for {
         blocks        <- createChain[Task](6)
         (_, wrongPk)  = Ed25519.newKeyPair
-        empty         = ByteString.EMPTY
-        invalidKey    = ByteString.copyFrom(Base16.decode("abcdef1234567890"))
+        empty         = Keys.PublicKeyHash(ByteString.EMPTY)
+        invalidKey    = Keys.PublicKeyHash(ByteString.copyFrom(Base16.decode("abcdef1234567890")))
+        wrongKey      = Keys.PublicKeyHash(ByteString.copyFrom(wrongPk))
         block0        = signedBlock(blocks(0)).changeValidator(empty)
         block1        = signedBlock(blocks(1)).changeValidator(invalidKey)
-        block2        = signedBlock(blocks(2)).changeValidator(ByteString.copyFrom(wrongPk))
+        block2        = signedBlock(blocks(2)).changeValidator(wrongKey)
         block3        = signedBlock(blocks(3)).changeSig(empty)
         block4        = signedBlock(blocks(4)).changeSig(invalidKey)
         block5        = signedBlock(blocks(5)).changeSig(block0.getSignature.sig) //wrong sig
@@ -254,6 +258,7 @@ class ValidationTest
 
   it should "return true on valid ed25519 signatures" in withCombinedStorage() { _ =>
     implicit val (sk, pk) = Ed25519.newKeyPair
+
     val block = ProtoUtil.block(
       Seq.empty,
       ByteString.EMPTY,
@@ -268,14 +273,32 @@ class ValidationTest
       1,
       Message.asJRank(1),
       Message.asMainRank(1),
-      pk,
-      sk,
-      Ed25519,
+      ValidatorIdentity(pk, sk, Ed25519),
       ByteString.EMPTY,
       0,
       false
     )
     Validation.blockSignature[Task](block) shouldBeF true
+  }
+
+  "Validator public key hash validation" should "return true when the signature and key matches the hash" in withoutStorage {
+    val (sk, pk)  = Ed25519.newKeyPair
+    val validator = ValidatorIdentity(pk, sk, Ed25519)
+    val sig       = validator.signature("sign this".getBytes())
+    val isValid   = Validation.publicKeyHash(sig, validator.publicKeyBS, validator.publicKeyHashBS)
+    Task.now(isValid) shouldBeF true
+  }
+
+  it should "return false when the hash doesn't match the public key" in withoutStorage {
+    val (sk, pk)  = Ed25519.newKeyPair
+    val validator = ValidatorIdentity(pk, sk, Ed25519)
+    val sig       = validator.signature("sign this".getBytes())
+    val isValid = Validation.publicKeyHash(
+      sig,
+      validator.publicKeyBS,
+      Keys.PublicKeyHash(ByteString.copyFrom("wrong hash".getBytes))
+    )
+    Task.now(isValid) shouldBeF false
   }
 
   "Deploy signature validation" should "return true for valid signatures" in withoutStorage {
@@ -439,12 +462,15 @@ class ValidationTest
   it should "not accept blocks that were published before justification time" in withCombinedStorage() {
     implicit storage =>
       for {
-        blocks  <- createChain[Task](3, creator = ByteString.copyFrom(Array[Byte](1)))
+        blocks <- createChain[Task](
+                   3,
+                   creator = Keys.PublicKeyHash(ByteString.copyFrom(Array[Byte](1)))
+                 )
         genesis = blocks.head
         // Create a new block on top of genesis which will use the previous ones as justifications.
         _ <- createChain[Task](
               1,
-              creator = ByteString.copyFrom(Array[Byte](2)),
+              creator = Keys.PublicKeyHash(ByteString.copyFrom(Array[Byte](2))),
               maybeGenesis = Some(genesis)
             )
         block4                  = blocks(3)
@@ -497,7 +523,9 @@ class ValidationTest
         val blockWithNumber = Block().changeBlockNumber(n)
         val header = blockWithNumber.getHeader
           .withJustifications(
-            justificationBlocks.map(b => Justification(b.getHeader.validatorPublicKey, b.blockHash))
+            justificationBlocks.map(
+              b => Justification(b.getHeader.validatorPublicKeyHash, b.blockHash)
+            )
           )
         val block = ProtoUtil.unsignedBlockProto(blockWithNumber.getBody, header)
         storage.put(block.blockHash, block, Map.empty) *>
@@ -730,7 +758,7 @@ class ValidationTest
   // Turns sequence of blocks into a mapping between validators and block hashes
   def latestMessages(messages: Seq[Block]): Map[Validator, Set[BlockHash]] =
     messages
-      .map(b => b.getHeader.validatorPublicKey -> b.blockHash)
+      .map(b => Keys.PublicKeyHash(b.getHeader.validatorPublicKeyHash) -> b.blockHash)
       .groupBy(_._1)
       .mapValues(_.map(_._2).toSet)
 
@@ -738,7 +766,7 @@ class ValidationTest
       parents: Seq[Block],
       bonds: Seq[Bond],
       justifications: Seq[Block],
-      validator: ByteString,
+      validator: Validator,
       keyBlock: Block
   ): F[Block] =
     for {
@@ -903,7 +931,9 @@ class ValidationTest
 
   "Bonds cache validation" should "succeed on a valid block and fail on modified bonds" in withCombinedStorage() {
     implicit storage =>
-      val (_, validators)                         = (1 to 4).map(_ => Ed25519.newKeyPair).unzip
+      val validators = (1 to 4).map(_ => Ed25519.newKeyPair).unzip._2.map { pk =>
+        Keys.PublicKeyHash(ByteString.copyFrom(Ed25519.publicKeyHash(pk)))
+      }
       val bonds                                   = HashSetCasperTest.createBonds(validators)
       val BlockMsgWithTransform(Some(genesis), _) = HashSetCasperTest.createGenesis(bonds)
       val genesisBonds                            = ProtoUtil.bonds(genesis)
@@ -929,10 +959,12 @@ class ValidationTest
 
   "Field format validation" should "succeed on a valid block and fail on empty fields" in withCombinedStorage() {
     _ =>
-      implicit val log                          = LogStub[Task]()
-      val (sk, pk)                              = Ed25519.newKeyPair
-      val BlockMsgWithTransform(Some(block), _) = HashSetCasperTest.createGenesis(Map(pk -> 1))
-      val genesis                               = ProtoUtil.signBlock(block, sk, Ed25519)
+      implicit val log = LogStub[Task]()
+      val (sk, pk)     = Ed25519.newKeyPair
+      val validator    = toPublicKeyHash(pk)
+      val BlockMsgWithTransform(Some(block), _) =
+        HashSetCasperTest.createGenesis(Map(validator -> 1))
+      val genesis = ProtoUtil.signBlock(block, sk, Ed25519)
 
       for {
         _ <- Validation.formatOfFields[Task](genesis) shouldBeF true
@@ -1090,9 +1122,10 @@ class ValidationTest
   }
 
   "Block hash format validation" should "fail on invalid hash" in withCombinedStorage() { _ =>
-    val (sk, pk) = Ed25519.newKeyPair
+    val (sk, pk)  = Ed25519.newKeyPair
+    val validator = toPublicKeyHash(pk)
     val BlockMsgWithTransform(Some(block), _) =
-      HashSetCasperTest.createGenesis(Map(pk -> 1))
+      HashSetCasperTest.createGenesis(Map(validator -> 1))
     val signedBlock = ProtoUtil.signBlock(block, sk, Ed25519)
     for {
       _ <- Validation.blockHash[Task](signedBlock) shouldBeF Unit
@@ -1106,9 +1139,10 @@ class ValidationTest
 
   "Block deploy count validation" should "fail on invalid number of deploys" in withCombinedStorage() {
     _ =>
-      val (sk, pk) = Ed25519.newKeyPair
+      val (sk, pk)  = Ed25519.newKeyPair
+      val validator = toPublicKeyHash(pk)
       val BlockMsgWithTransform(Some(block), _) =
-        HashSetCasperTest.createGenesis(Map(pk -> 1))
+        HashSetCasperTest.createGenesis(Map(validator -> 1))
       val signedBlock = ProtoUtil.signBlock(block, sk, Ed25519)
       for {
         _ <- Validation.deployCount[Task](signedBlock) shouldBeF Unit
@@ -1122,7 +1156,8 @@ class ValidationTest
 
   "Block version validation" should "work" in withCombinedStorage() { _ =>
     val (sk, pk)                              = Ed25519.newKeyPair
-    val BlockMsgWithTransform(Some(block), _) = HashSetCasperTest.createGenesis(Map(pk -> 1))
+    val validator                             = toPublicKeyHash(pk)
+    val BlockMsgWithTransform(Some(block), _) = HashSetCasperTest.createGenesis(Map(validator -> 1))
     // Genesis' block version is 1.  `missingProtocolVersionForBlock` will fail ProtocolVersion lookup
     // while `protocolVersionForGenesisBlock` returns proper one (version=1)
 

@@ -8,28 +8,75 @@ import scala.collection.immutable
 sealed trait CLType
 
 object CLType {
-  case object Bool                                      extends CLType
-  case object I32                                       extends CLType
-  case object I64                                       extends CLType
-  case object U8                                        extends CLType
-  case object U32                                       extends CLType
-  case object U64                                       extends CLType
-  case object U128                                      extends CLType
-  case object U256                                      extends CLType
-  case object U512                                      extends CLType
-  case object Unit                                      extends CLType
-  case object String                                    extends CLType
-  case object Key                                       extends CLType
-  case object URef                                      extends CLType
-  case class Option(t: CLType)                          extends CLType
-  case class List(t: CLType)                            extends CLType
-  case class FixedList(t: CLType, length: Int)          extends CLType
-  case class Result(ok: CLType, err: CLType)            extends CLType
-  case class Map(key: CLType, value: CLType)            extends CLType
-  case class Tuple1(t: CLType)                          extends CLType
-  case class Tuple2(t1: CLType, t2: CLType)             extends CLType
-  case class Tuple3(t1: CLType, t2: CLType, t3: CLType) extends CLType
-  case object Any                                       extends CLType
+  case object Bool extends CLType {
+    override def toString(): String = "Bool";
+  }
+  case object I32 extends CLType {
+    override def toString(): String = "I32";
+  }
+  case object I64 extends CLType {
+    override def toString(): String = "I64";
+  }
+  case object U8 extends CLType {
+    override def toString(): String = "U8";
+  }
+  case object U32 extends CLType {
+    override def toString(): String = "U32";
+  }
+  case object U64 extends CLType {
+    override def toString(): String = "U64";
+  }
+  case object U128 extends CLType {
+    override def toString(): String = "U128";
+  }
+  case object U256 extends CLType {
+    override def toString(): String = "U256";
+  }
+  case object U512 extends CLType {
+    override def toString(): String = "U512";
+  }
+  case object Unit extends CLType {
+    override def toString(): String = "Unit";
+  }
+  case object String extends CLType {
+    override def toString(): String = "String";
+  }
+  case object Key extends CLType {
+    override def toString(): String = "Key";
+  }
+  case object URef extends CLType {
+    override def toString(): String = "URef";
+  }
+  case class Option(t: CLType) extends CLType {
+    override def toString(): String = "Option(" + t.toString() + ")";
+  }
+  case class List(t: CLType) extends CLType {
+    override def toString(): String = "List(" + t.toString() + ")";
+  }
+  case class FixedList(t: CLType, length: Int) extends CLType {
+    override def toString(): String = "FixedList(" + t.toString() + ")";
+  }
+  case class Result(ok: CLType, err: CLType) extends CLType {
+    override def toString(): String =
+      "Result{ ok: " + ok.toString() + ", err: " + err.toString() + "}";
+  }
+  case class Map(key: CLType, value: CLType) extends CLType {
+    override def toString(): String =
+      "Map{ key: " + key.toString() + ", value: " + value.toString() + "}";
+  }
+  case class Tuple1(t: CLType) extends CLType {
+    override def toString(): String = "Tuple1(" + t.toString() + ")";
+  }
+  case class Tuple2(t1: CLType, t2: CLType) extends CLType {
+    override def toString(): String = "Tuple2(" + t1.toString() + ", " + t2.toString() + ")";
+  }
+  case class Tuple3(t1: CLType, t2: CLType, t3: CLType) extends CLType {
+    override def toString(): String =
+      "Tuple3(" + t1.toString() + ", " + t2.toString() + ", " + t3.toString() + ")";
+  }
+  case object Any extends CLType {
+    override def toString(): String = "Any";
+  }
 
   // Type representing the list of things that need to be appended to the
   // serialized CLType (see `toBytesTailRec` below). The `Left` case represents the
