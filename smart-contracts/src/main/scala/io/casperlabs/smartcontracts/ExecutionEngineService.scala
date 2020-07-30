@@ -91,6 +91,11 @@ class GrpcExecutionEngineService[F[_]: Defer: Concurrent: Log: TaskLift: Metrics
             s"It looks like the Execution Engine is not listening at the socket file ${addr}"
           )
         )
+      case ex: io.grpc.StatusRuntimeException
+          if ex.getStatus.getCode == io.grpc.Status.Code.INTERNAL =>
+        Sync[F].raiseError(
+          new RuntimeException(s"Internal server error: ${ex.getLocalizedMessage()}")
+        )
     }
 
   private def sendExecute(
