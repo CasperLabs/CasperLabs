@@ -55,7 +55,7 @@
 //! assert_eq!(expected_value, returned_value);
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/casperlabs-engine-test-support/0.8.0")]
+#![doc(html_root_url = "https://docs.rs/casperlabs-engine-test-support/0.8.1")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/images/CasperLabs_Logo_Symbol_RGB.png",
