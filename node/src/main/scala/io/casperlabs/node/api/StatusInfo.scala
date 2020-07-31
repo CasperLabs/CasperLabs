@@ -199,16 +199,16 @@ object StatusInfo {
     }
 
     def bootstrap[F[_]: Sync: NodeDiscovery](conf: Configuration, genesis: Block) = Check {
-      val bootstrapNodes = conf.server.bootstrap.map(_.withChainId(genesis.blockHash))
-      NodeDiscovery[F].recentlyAlivePeersAscendingDistance.map(_.toSet).map { nodes =>
-        val connected = bootstrapNodes.filter(nodes)
+      val bootstrapNodeIds = conf.server.bootstrap.map(_.withChainId(genesis.blockHash).id)
+      NodeDiscovery[F].recentlyAlivePeersAscendingDistance.map { peers =>
+        val nodeIds   = peers.map(_.id).toSet
+        val connected = bootstrapNodeIds.filter(nodeIds)
         Check(
-          ok = bootstrapNodes.isEmpty || connected.nonEmpty,
-          message =
-            if (bootstrapNodes.nonEmpty)
-              s"Connected to ${connected.size} of the bootstrap node(s) out of the ${bootstrapNodes.size} configured."
-            else
-              "No bootstraps configured.",
+          ok = bootstrapNodeIds.isEmpty || connected.nonEmpty,
+          message = if (bootstrapNodeIds.nonEmpty)
+            s"Connected to ${connected.size} of the bootstrap node(s) out of the ${bootstrapNodeIds.size} configured."
+          else
+            "No bootstraps configured.",
           details = PeerDetails(count = connected.size).some
         )
       }

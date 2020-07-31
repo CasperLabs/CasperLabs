@@ -1,6 +1,6 @@
 [package]
 name = "casperlabs-engine-core"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Michael Birch <birchmd@casperlabs.io>", "Mateusz Górski <gorski.mateusz@protonmail.ch>"]
 edition = "2018"
 description = "Main component of the CasperLabs Wasm execution engine."
@@ -18,26 +18,26 @@ include = [
 [dependencies]
 base16 = "0.2.1"
 blake2 = "0.8.1"
-contract = { version = "0.6.0", path = "../contract",  package = "casperlabs-contract", features = ["std"] }
-engine-shared = { version = "0.7.0", path = "../engine-shared", package = "casperlabs-engine-shared" }
-engine-storage = { version = "0.7.0", path = "../engine-storage", package = "casperlabs-engine-storage" }
-engine-wasm-prep = { version = "0.6.0", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
+contract = { version = "0.6.1", path = "../contract",  package = "casperlabs-contract", features = ["std"] }
+engine-shared = { version = "0.7.1", path = "../engine-shared", package = "casperlabs-engine-shared" }
+engine-storage = { version = "0.7.1", path = "../engine-storage", package = "casperlabs-engine-storage" }
+engine-wasm-prep = { version = "0.6.1", path = "../engine-wasm-prep", package = "casperlabs-engine-wasm-prep" }
 failure = "0.1.6"
 hex_fmt = "0.3.0"
 itertools = "0.8.2"
 lazy_static = "1.4.0"
 linked-hash-map = "0.5.2"
 log = "0.4.8"
-mint = { version = "0.4.0", path = "../mint", package = "casperlabs-mint" }
-proof-of-stake = { version = "0.4.0", path = "../proof-of-stake", package = "casperlabs-proof-of-stake" }
+mint = { version = "0.4.1", path = "../mint", package = "casperlabs-mint" }
+proof-of-stake = { version = "0.4.1", path = "../proof-of-stake", package = "casperlabs-proof-of-stake" }
 num-derive = "0.3.0"
 num-traits = "0.2.10"
 parity-wasm = "0.41.0"
 pwasm-utils = "0.12.0"
 rand = "0.7.2"
 rand_chacha = "0.2.1"
-standard-payment = { version = "0.4.0", path = "../standard-payment", package = "casperlabs-standard-payment" }
-types = { version = "0.6.0", path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
+standard-payment = { version = "0.4.1", path = "../standard-payment", package = "casperlabs-standard-payment" }
+types = { version = "0.6.1", path = "../types", package = "casperlabs-types", features = ["std", "gens"] }
 wasmi = "0.6.2"
 
 [dev-dependencies]

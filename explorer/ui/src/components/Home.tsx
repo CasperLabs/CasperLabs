@@ -42,7 +42,7 @@ const Home = observer((props: Props) => {
         <ul className="list-inline" id="go-to-buttons">
           <li className="list-inline-item">
             <h4>
-              <a href="https://techspec.casperlabs.io/" role="button">
+              <a href="https://docs.casperlabs.io/" role="button">
                 Read our Tech Spec &raquo;
               </a>
             </h4>
@@ -52,12 +52,8 @@ const Home = observer((props: Props) => {
         <h3>Looking for help?</h3>
         <p>
           To write contracts have a look at the{' '}
-          <a href="https://techspec.casperlabs.io/en/latest/dapp/index.html">
+          <a href="https://docs.casperlabs.io/en/latest/dapp-dev-guide/index.html">
             dApp Developer Guide
-          </a>
-          , the{' '}
-          <a href="https://github.com/CasperLabs/CasperLabs/tree/dev/execution-engine/contracts/examples">
-            contract examples
           </a>
           , the{' '}
           <a href="https://github.com/CasperLabs/CasperLabs/blob/dev/README.md">

@@ -108,7 +108,7 @@ lazy_static! {
         .join("src/integration_tests.rs");
     static ref ENGINE_TEST_SUPPORT: Dependency = Dependency::new(
         "casperlabs-engine-test-support",
-        "0.8.0",
+        "0.8.1",
         "engine-test-support"
     );
     static ref CARGO_TOML_ADDITIONAL_CONTENTS: String = format!(
