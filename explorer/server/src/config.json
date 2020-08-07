@@ -1,7 +1,0 @@
-{
-  "auth0": {
-    "domain": "casperlabs.auth0.com",
-    "clientId": "yCRANysNt2xrCqf3LCdtiYQBOx3X5NxK",
-    "audience": "https://casperlabs.auth0.com/api/v2/"
-  }
-}
