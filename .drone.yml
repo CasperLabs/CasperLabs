@@ -448,27 +448,6 @@ steps:
   - rust-compile-test-bors
   - sbt-test-docker-bors
 
-- name: docker-build-explorer-bors
-  commands:
-  - "export DOCKER_LATEST_TAG=DRONE-${DRONE_BUILD_NUMBER}"
-  - "~/.cargo/bin/rustup toolchain install $(cat execution-engine/rust-toolchain)"
-  - "rustup target add --toolchain $(cat execution-engine/rust-toolchain) wasm32-unknown-unknown"
-  - "make docker-build/explorer"
-  - "make docker-build/grpcwebproxy"
-  environment:
-    _JAVA_OPTIONS: "-Xms2G -Xmx2G -XX:MaxMetaspaceSize=1G"
-  image: "casperlabs/buildenv:latest"
-  volumes:
-  - name: docker_sock
-    path: "/var/run/docker.sock"
-  when:
-    branch:
-    - staging
-    - trying
-  depends_on:
-  - rust-compile-test-bors
-  - sbt-test-docker-bors
-
 - name: docker-keys-gen-test-bors
   commands:
   - "mkdir /tmp/keys-DRONE-${DRONE_BUILD_NUMBER}"
@@ -543,22 +522,6 @@ steps:
     event:
     - push
 
-- name: docker-explorer-merge
-  commands:
-  - "export DOCKER_LATEST_TAG=DRONE-${DRONE_BUILD_NUMBER}"
-  - "make docker-build/explorer"
-  image: "casperlabs/buildenv:latest"
-  volumes:
-  - name: docker_sock
-    path: "/var/run/docker.sock"
-  when:
-    branch:
-    - dev
-    - release-*
-    - master
-    event:
-    - push
-
 - name: docker-grpcwebproxy-merge
   commands:
   - "export DOCKER_LATEST_TAG=DRONE-${DRONE_BUILD_NUMBER}"
@@ -592,7 +555,6 @@ steps:
   - rust-compile-for-make
   - docker-build-ee-merge
   - docker-key-gen-merge
-  - docker-explorer-merge
   - docker-grpcwebproxy-merge
 
 - name: package-sbt-artifacts-merge
@@ -682,23 +644,19 @@ steps:
       docker tag casperlabs/node:DRONE-${DRONE_BUILD_NUMBER} casperlabs/node:"$REF"
       docker tag casperlabs/execution-engine:DRONE-${DRONE_BUILD_NUMBER} casperlabs/execution-engine:"$REF"
       docker tag casperlabs/key-generator:DRONE-${DRONE_BUILD_NUMBER} casperlabs/key-generator:"$REF"
-      docker tag casperlabs/explorer:DRONE-${DRONE_BUILD_NUMBER} casperlabs/explorer:"$REF"
       docker tag casperlabs/grpcwebproxy:DRONE-${DRONE_BUILD_NUMBER} casperlabs/grpcwebproxy:"$REF"
       docker push casperlabs/node:"$REF"
       docker push casperlabs/execution-engine:"$REF"
       docker push casperlabs/key-generator:"$REF"
-      docker push casperlabs/explorer:"$REF"
       docker push casperlabs/grpcwebproxy:"$REF"
       if [ "${DRONE_BRANCH}" = "master" ]; then
         docker tag casperlabs/node:DRONE-${DRONE_BUILD_NUMBER} casperlabs/node:latest
         docker tag casperlabs/execution-engine:DRONE-${DRONE_BUILD_NUMBER} casperlabs/execution-engine:latest
         docker tag casperlabs/key-generator:DRONE-${DRONE_BUILD_NUMBER} casperlabs/key-generator:latest
-        docker tag casperlabs/explorer:DRONE-${DRONE_BUILD_NUMBER} casperlabs/explorer:latest
         docker tag casperlabs/grpcwebproxy:DRONE-${DRONE_BUILD_NUMBER} casperlabs/grpcwebproxy:latest
         docker push casperlabs/node:latest
         docker push casperlabs/execution-engine:latest
         docker push casperlabs/key-generator:latest
-        docker push casperlabs/explorer:latest
         docker push casperlabs/grpcwebproxy:latest
       fi
       echo "done"
@@ -721,7 +679,6 @@ steps:
   depends_on:
   - docker-build-ee-merge
   - docker-key-gen-merge
-  - docker-explorer-merge
   - docker-grpcwebproxy-merge
   - package-sbt-artifacts-merge
 
@@ -898,7 +855,6 @@ steps:
   - "make docker-build/node"
   - "make docker-build/execution-engine"
   - "make docker-build/key-generator"
-  - "make docker-build/explorer"
   - "make docker-build/grpcwebproxy"
   volumes:
   - name: docker_sock
@@ -926,7 +882,6 @@ steps:
       docker push casperlabs/node:"${DRONE_TAG}"
       docker push casperlabs/execution-engine:"${DRONE_TAG}"
       docker push casperlabs/key-generator:"${DRONE_TAG}"
-      docker push casperlabs/explorer:"${DRONE_TAG}"
       docker push casperlabs/grpcwebproxy:"${DRONE_TAG}"
   when:
     ref:
