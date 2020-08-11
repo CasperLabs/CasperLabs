@@ -51,9 +51,6 @@ services:
   # https://github.com/grpc/grpc-web#proxy-interoperability
   # https://github.com/improbable-eng/grpc-web/tree/master/go/grpcwebproxy
   grpcwebproxy:
-    build:
-      context: ./
-      dockerfile: ./grpcwebproxy/Dockerfile
     image: casperlabs/grpcwebproxy:${CL_VERSION}
     container_name: grpcwebproxy
     ports:

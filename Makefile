@@ -50,7 +50,6 @@ docker-build-all: \
 	docker-build/client \
 	docker-build/execution-engine \
 	docker-build/key-generator \
-	docker-build/grpcwebproxy
 
 docker-push-all: \
 	docker-push/node \
@@ -62,7 +61,6 @@ docker-build/node: .make/docker-build/debian/node
 docker-build/client: .make/docker-build/debian/client
 docker-build/execution-engine: .make/docker-build/execution-engine
 docker-build/key-generator: .make/docker-build/key-generator
-docker-build/grpcwebproxy: .make/docker-build/grpcwebproxy
 
 # Tag the `latest` build with the version from git and push it.
 # Call it like `DOCKER_PUSH_LATEST=true make docker-push/node`
@@ -112,11 +110,6 @@ cargo-native-packager/%:
 	hack/key-management/Dockerfile \
 	hack/key-management/gen-keys.sh
 	docker build -f hack/key-management/Dockerfile -t $(DOCKER_USERNAME)/key-generator:$(DOCKER_LATEST_TAG) hack/key-management
-	mkdir -p $(dir $@) && touch $@
-
-.make/docker-build/grpcwebproxy: hack/docker/grpcwebproxy/Dockerfile
-	cd hack/docker && docker-compose build grpcwebproxy
-	docker tag casperlabs/grpcwebproxy:latest $(DOCKER_USERNAME)/grpcwebproxy:$(DOCKER_LATEST_TAG)
 	mkdir -p $(dir $@) && touch $@
 
 # Refresh Scala build artifacts if source was changed.
