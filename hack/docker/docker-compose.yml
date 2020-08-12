@@ -110,34 +110,6 @@ services:
     networks:
       - casperlabs
 
-  # stests workers
-  stests:
-    image: casperlabs/stests:latest
-    container_name: stests
-    environment:
-      STESTS_HOME: /root/casperlabs/stests
-      STESTS_PATH_ROOT: /root/.casperlabs-stests
-      STESTS_BROKER_REDIS_HOST: redis
-      STESTS_CACHE_REDIS_HOST: redis
-      STESTS_MWARE_REDIS_HOST: redis
-    volumes:
-      - $PWD/stests/start-worker.sh:/root/casperlabs/start-worker.sh
-    entrypoint:
-      - sh
-      - -c
-      - chmod +x ./start-worker.sh && ./start-worker.sh
-    networks:
-      - casperlabs
-    depends_on:
-      - redis
-
-  # Redis database required for stests.
-  redis:
-    image: redis:5.0
-    container_name: redis
-    networks:
-      - casperlabs
-
   # Selenium for testing clarity
   selenium:
     image: selenium/standalone-chrome:3.141.59-xenon

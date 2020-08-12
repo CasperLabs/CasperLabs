@@ -86,7 +86,6 @@ node-%/status:
 # Start common components.
 up: \
 		.make/docker/network \
-		.make/stests/build \
 		.casperlabs
 	$(REFRESH_TARGETS)
 	if [ "$(CL_VERSION)" != "latest" ]; then \
