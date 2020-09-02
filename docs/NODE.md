@@ -65,6 +65,15 @@ curl -O https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/testnet/mani
 ```
 ##### These files need to be placed in the `/.casperlabs/chainspec/genesis` directory on the node.
 
+##### The md5 checksums for these files for the testnet are here.  Please verify that your files match.
+
+``` 
+f1804b89133f181a97e2f64871f757fe  accounts.csv
+fe80f25fe3469385a246553f8ef39850  manifest.toml
+
+```
+
+
 #### Step 3: Create Node keys and TLS Certificate
 
 The node uses a separate set of keys for its' TLS certificate. These keys are separate from validator keys- which happen to be the same as account keys (created via Clarity).  In this step, create the Node keys and TLS Certificate as described [here](KEYS.md#generating-node-keys-and-validator-keys).
@@ -111,7 +120,14 @@ curl https://localhost:40403/status | jq
 ```
 Check the 'Last Finalized Block' received from this query against Clarity to confirm that the node is in sync with the network.
 
+#### Monitoring
+
+The SRE team monitors validating nodes on the network.  Please open port 40403 and communicate your node's public IP address via Discord.
+
 * You can also monitor the network and your node on the [Grafana](https://grafana.casperlabs.io/d/tlZ4zTrZk/testnet-block-processing?orgId=1&from=now-7d&to=now) dashboard.
+* It's possible to configure Prometheus metrics and Grafana from the metrics emitted from port 40403 at the /metrics endpoint.
+
+* If you wish to set up alerts, look at the deploy buffer size.  If the deploy buffers start to increase, your node may be having issues, or experiencing unusually high load.
 
 #### Stopping the Node
 
