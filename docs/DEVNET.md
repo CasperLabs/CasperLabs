@@ -65,7 +65,7 @@ casperlabs_client \
         --host localhost \
         deploy \
         --session <path-to-wasm> \
-        --private-key <path-to-account-private-key>
+        --private-key secret_key.pem
 
 casperlabs_client \
         --host localhost \
