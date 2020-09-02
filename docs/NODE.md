@@ -65,6 +65,15 @@ curl -O https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/testnet/mani
 ```
 ##### These files need to be placed in the `/.casperlabs/chainspec/genesis` directory on the node.
 
+##### The md5 checksums for these files for the testnet are here.  Please verify that your files match.
+
+``` 
+f1804b89133f181a97e2f64871f757fe  accounts.csv
+fe80f25fe3469385a246553f8ef39850  manifest.toml
+
+```
+
+
 #### Step 3: Create Node keys and TLS Certificate
 
 The node uses a separate set of keys for its' TLS certificate. These keys are separate from validator keys- which happen to be the same as account keys (created via Clarity).  In this step, create the Node keys and TLS Certificate as described [here](KEYS.md#generating-node-keys-and-validator-keys).
