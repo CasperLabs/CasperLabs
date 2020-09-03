@@ -33,48 +33,48 @@ Once the CasperLabs client is installed, compile a contract, see [CONTRACTS.md](
 Use the CasperLabs client `deploy` sub-command (see example below):
 
   - `--session` is the path to the compiled contract
-  - `--private-key` is the path to the private key file downloaded from [clarity.casperlabs.io](https://clarity.casperlabs.io/) during account creation.
+  - `--private-key` is the path to the secret_key.pem file downloaded from [clarity.casperlabs.io](https://clarity.casperlabs.io/) during account creation.
 
 For example:
 ```shell
-casperlabs-client \
+casperlabs_client \
         --host deploy.casperlabs.io \
         deploy \
         --session <path-to-wasm> \
-        --private-key account.private.key
+        --private-key secret_key.pem
 ```
 
 You can query the outcome of deploys using `casperlabs-client`:
 
 ```shell
-casperlabs-client\
+casperlabs_client\
         --host deploy.casperlabs.io \
         --port 40401 show-deploy <deploy-hash>
 ```
 
-For more details on deploys, see the available CLI arguments with `casperlabs-client deploy --help`, and further documentation in [CONTRACTS.md](CONTRACTS.md).
+For more details on deploys, see the available CLI arguments with `casperlabs_client deploy --help`, and further documentation in [CONTRACTS.md](CONTRACTS.md).
 
 ##### Step 4: Bonding
 
-Follow the instructions [here](NODE.md/#running-a-validator-on-the-casperLabs-network) for connecting to the CasperLabs network. Once bonded, you can use the CasperLabs client with your local node to deploy code and propose blocks on the devnet.
+Follow the instructions [here](NODE.md#running-a-node-on-the-casper-testnet) for connecting to the CasperLabs network. Once bonded, you can use the CasperLabs client with your local node to deploy code and propose blocks on the devnet.
 
 For example:
 
 ```shell
-casperlabs-client \
+casperlabs_client \
         --host localhost \
         deploy \
         --session <path-to-wasm> \
-        --private-key <path-to-account-private-key>
+        --private-key secret_key.pem
 
-casperlabs-client \
+casperlabs_client \
         --host localhost \
         propose
 ```
 
 ##### Step 5: Unbonding
 
-Follow instructions [here](NODE.md#stopping-a-bonded-validator) for stopping a bonded validator.
+Follow instructions [here](NODE.md#stopping-the-node) for stopping a bonded validator.
 
 ## Notes
 This quick start gives the simplest set of instructions for getting started on the CasperLabs devnet. More advanced users may wish to take other approaches to some of the steps listed above.
