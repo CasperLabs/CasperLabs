@@ -68,8 +68,8 @@ curl -O https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/testnet/mani
 ##### The md5 checksums for these files for the testnet are here.  Please verify that your files match.
 
 ``` 
-b64ab50d951fc8dd1159a81a4aa4d70c  accounts.csv
-fe80f25fe3469385a246553f8ef39850  manifest.toml
+e4b5e2c4e03b2b32f8da3e1388b66d65  accounts.csv
+44bb841660b8e32e948aba917fad6190  manifest.toml
 
 ```
 
