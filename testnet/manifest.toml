@@ -3,11 +3,11 @@
 # Human readable name for convenience; the genesis_hash is the true identifier.
 # The name influences the genesis hash by contributing to the seeding of the pseudo-
 # random number generator used in execution engine for computing genesis post-state.
-name = "casperlabs-testnet-beta-2"
+name = "casperlabs-testnet-beta-3"
 
 # Timestamp for the genesis block, also used in seeding the pseudo-random number
 # generator used in execution engine for computing genesis post-state.
-timestamp = 1599238800000
+timestamp = 1600711200000
 
 # Later will be replaced by semver.
 protocol-version = "1.0.0"
@@ -31,7 +31,7 @@ initial-accounts-path = "accounts.csv"
 # we start the nodes, they'll not be able to produce blocks in it, and there won't be a new
 # era build either. That means when a completely new network is started, the genesis era
 # start time has to be adjusted to be active at the time.
-genesis-era-start = 1599238800000
+genesis-era-start = 1600711200000
 
 # Era duration defined as a fixed amount of time.
 era-duration = "60minutes"
