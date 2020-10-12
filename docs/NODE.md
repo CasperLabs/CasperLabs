@@ -68,10 +68,10 @@ curl -O https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/testnet/mani
 ##### The md5 checksums for these files for the testnet are here.  Please verify that your files match.
 
 ``` 
-65e381e9be73cd220bc5c29e3e9fcd36  accounts.csv
-25bde1f4e2829d971360488a1b671840  manifest.toml
-```
+3add70e406639ac74e85a64de2f4dddb  accounts.csv
+a89412ed5f1218ec821ee1f0c4a521eb  manifest.toml
 
+```
 
 #### Step 3: Create Node keys and TLS Certificate
 
