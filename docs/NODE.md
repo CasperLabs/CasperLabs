@@ -69,7 +69,7 @@ curl -O https://raw.githubusercontent.com/CasperLabs/CasperLabs/dev/testnet/mani
 
 ``` 
 3add70e406639ac74e85a64de2f4dddb  accounts.csv
-e64d6d1603e599faa3a532f1b9a43521  manifest.toml
+a89412ed5f1218ec821ee1f0c4a521eb  manifest.toml
 
 ```
 
