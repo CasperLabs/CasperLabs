@@ -11,6 +11,9 @@ Casper is the blockchain platform purpose-built to scale opportunity for everyon
 
 We strive to scale opportunity for everyone - forever. Read more about our mission at: https://casperlabs.io/company
 
+# DEPRECATED. THE SCALA NODE IS DEPRECATED - DO NOT USE.
+
+
 ## Current Development Status
 The status on development is reported during the Community calls and is found [here](https://github.com/CasperLabs/Governance/wiki/Current-Status)
 
